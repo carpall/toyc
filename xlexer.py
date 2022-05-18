@@ -1,5 +1,7 @@
-from utils import *
-from data  import Token
+from compiler_utils import *
+from data           import Token
+
+USELESS_CHARS = [' ']
 
 PUNCTUATION = [
   '(',
@@ -94,21 +96,24 @@ class Lexer(CompilerComponent):
     return 0 if spacing < 0 or is_on_new_line else spacing
 
   def match_comment_pattern(self):
-    return self.cur == '/' and self.nxt.is_some_with_any(['/', '*'])
+    plugins_matched_comment = plugin_call('match_comment_pattern', type(self), Lexer.match_comment_pattern, lexer=self)
+    matched_comment = Out(self.cur == '/' and self.nxt.is_some_with_any(['/', '*']), skipper=lambda _: self.skip_comment(self.nxt.is_some_with('/')))
+
+    return Out(
+      plugins_matched_comment.unwrap() or matched_comment.unwrap(),
+      skipper=plugins_matched_comment.skipper if plugins_matched_comment else matched_comment.skipper
+    )
 
   def eat_comment(self):
-    ate = self.match_comment_pattern()
+    will_eat_comment = self.match_comment_pattern()
 
-    if ate:
-      self.skip_comment(self.nxt.is_some_with('/'))
+    if will_eat_comment.unwrap():
+      will_eat_comment.skipper(self)
 
-    return ate
+    return will_eat_comment.unwrap()
 
   def eat_whitespace(self):
     match self.cur:
-      case ' ':
-        self.idx += 1
-
       case '\n':
         self.idx += 1
         self.col_start_idx = self.idx
@@ -120,7 +125,10 @@ class Lexer(CompilerComponent):
         self.report("'\\r' and '\\t' are not allowed", self.cur_pos)
 
       case _:
-        return False
+        if self.cur not in USELESS_CHARS:
+          return False
+        
+        self.idx += 1
     
     return True
 
@@ -210,7 +218,9 @@ class Lexer(CompilerComponent):
     return result
 
   def next_token(self):
-    if self.cur.isalpha() or self.cur == '_':
+    if (matches := plugin_call('match_next_token', type(self), Lexer.next_token, lexer=self)).unwrap():
+      token = matches.collector(self)
+    elif self.cur.isalpha() or self.cur == '_':
       token = self.convert_to_keyword_or_id(self.collect_id())
     elif self.cur.isdigit():
       token = self.collect_digit()
@@ -236,6 +246,8 @@ class Lexer(CompilerComponent):
       token = self.next_token()
       self.end_idx_of_last_token = self.idx - 1
 
+      if plugin_call('on_token_append_to_lexer_output', type(self), Lexer.gen, lexer=self, lexer_output=result): continue
+      
       result.append(token)
 
     return CompilerResult(self.errors_bag, result)

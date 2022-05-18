@@ -1,11 +1,11 @@
-from copy     import copy, deepcopy
-from pathlib  import Path
-from os.path  import exists as file_exists
-from os       import getcwd
-from utils    import *
-from data     import *
-from datetime import datetime
-from xlexer   import Lexer
+from copy           import copy, deepcopy
+from pathlib        import Path
+from os.path        import exists as file_exists
+from os             import getcwd
+from compiler_utils import *
+from data           import *
+from datetime       import datetime
+from xlexer         import Lexer
 
 class Preprocessor(CompilerComponent):
   def __init__(self, src_info, tokens, symbols=[]):
