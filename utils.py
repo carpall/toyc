@@ -58,3 +58,6 @@ def range_to_len(start, stop):
 
 def dbg(**kwargs):
   print('DBG ->', kwargs)
+
+def inline_function(*args, ret=None):
+  return ret

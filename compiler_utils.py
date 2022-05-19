@@ -1,6 +1,6 @@
 from os.path import abspath
 from utils   import *
-from plugin  import plugin_call
+from plugin  import StopExecution, plugin_call
 
 class SourceInfo:
   def __init__(self, filename):
@@ -35,7 +35,7 @@ class CompilerComponent:
   def report(self, msg, pos):
     error = CompilerError(msg, pos)
 
-    if plugin_call('on_error_report', type(self), CompilerComponent.report, error=error): return
+    if plugin_call('on_error_report', self.report, error=error) == StopExecution: return
     
     self.errors_bag.append(error)
 

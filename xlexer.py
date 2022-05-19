@@ -96,7 +96,7 @@ class Lexer(CompilerComponent):
     return 0 if spacing < 0 or is_on_new_line else spacing
 
   def match_comment_pattern(self):
-    plugins_matched_comment = plugin_call('match_comment_pattern', type(self), Lexer.match_comment_pattern, lexer=self)
+    plugins_matched_comment = plugin_call('match_comment_pattern', self.match_comment_pattern)
     matched_comment = Out(self.cur == '/' and self.nxt.is_some_with_any(['/', '*']), skipper=lambda _: self.skip_comment(self.nxt.is_some_with('/')))
 
     return Out(
@@ -218,7 +218,7 @@ class Lexer(CompilerComponent):
     return result
 
   def next_token(self):
-    if (matches := plugin_call('match_next_token', type(self), Lexer.next_token, lexer=self)).unwrap():
+    if (matches := plugin_call('match_next_token', self.next_token)).unwrap():
       token = matches.collector(self)
     elif self.cur.isalpha() or self.cur == '_':
       token = self.convert_to_keyword_or_id(self.collect_id())
@@ -235,7 +235,7 @@ class Lexer(CompilerComponent):
     return token
 
   def gen(self):
-    result = []
+    self.output = []
 
     while True:
       self.eat_useless_chars()
@@ -246,8 +246,8 @@ class Lexer(CompilerComponent):
       token = self.next_token()
       self.end_idx_of_last_token = self.idx - 1
 
-      if plugin_call('on_token_append_to_lexer_output', type(self), Lexer.gen, lexer=self, lexer_output=result): continue
+      if plugin_call('on_token_append_to_lexer_output', self.gen) == StopExecution: continue
       
-      result.append(token)
+      self.output.append(token)
 
-    return CompilerResult(self.errors_bag, result)
+    return CompilerResult(self.errors_bag, self.output)

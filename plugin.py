@@ -18,11 +18,11 @@ def init_plugins(**kwargs):
   for plugin_class in PLUGINS_CLASSES:
     PLUGINS_INSTANCES.append(plugin_class(**kwargs))
 
-def plugin_call(impl_name, component, method, **kwargs):
-  results = [getattr(plugin, impl_name)(component, method, **kwargs) for plugin in PLUGINS_INSTANCES]
+def plugin_call(impl_name, component, **kwargs):
+  results = [getattr(plugin, impl_name)(component, **kwargs) for plugin in PLUGINS_INSTANCES]
 
   if any(results) != all(results):
-    raise PluginError(f'plugins conflict on implementation of {impl_name} for {component}.{method}')
+    raise PluginError(f'plugins conflict on implementation of {impl_name} hook for {component}')
   
   return results[0]
 
@@ -36,28 +36,29 @@ class Plugin:
   def __init_subclass__(cls):
     PLUGINS_CLASSES.append(cls)
   
-  def on_error_report(self, component, method, error):
+  def on_error_report(self, component, error):
     """
+    this call occurs when an error is about to be added to the component's error list
+
     Parameters
     ----------
-    - `component: CompilerComponent` the compiler component which reported the error
-    - `method: function` the method which made the plugin call
-    - `error: CompilerError` the error instance
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `error: CompilerError`         the error instance
 
     Return
     ------
-    `bool` indicates whether `method` should stop to be executed
+    `bool` indicates whether the caller should stop to be executed
     """
 
     return ContinueExecution
 
-  def match_next_token(self, component, method, lexer):
+  def match_next_token(self, component):
     """
+    this call occurs when the lexer component is trying to find a token to collect
+
     Parameters
     ----------
-    - `component: CompilerComponent` the compiler component which reported the error
-    - `method: function` the method which made the plugin call
-    - `lexer: Lexer` the lexer instance
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
 
     Return
     ------
@@ -66,13 +67,13 @@ class Plugin:
 
     return Out(False, collector=lambda lexer: None)
   
-  def match_comment_pattern(self, component, method, lexer):
+  def match_comment_pattern(self, component):
     """
+    this call occurs when the lexer component is trying to find a comment
+
     Parameters
     ----------
-    - `component: CompilerComponent` the compiler component which reported the error
-    - `method: function` the method which made the plugin call
-    - `lexer: Lexer` the lexer instance
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
 
     Return
     ------
@@ -81,18 +82,97 @@ class Plugin:
 
     return Out(False, skipper=lambda lexer: None)
   
-  def on_token_append_to_lexer_output(self, component, method, lexer, lexer_output):
+  def on_token_append_to_lexer_output(self, component):
     """
+    this call occurs when the lexer component is about to add a token to the token list
+
     Parameters
     ----------
-    - `component: CompilerComponent` the compiler component which reported the error
-    - `method: function` the method which made the plugin call
-    - `lexer: Lexer` the lexer instance
-    - `lexer_output: List[Token]` the lexer output list
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
 
     Return
     ------
-    `bool` indicates whether `method` should stop to be executed
+    `bool` indicates whether the caller should stop to be executed
+    """
+
+    return ContinueExecution
+  
+  def on_redefine_preprocessor_symbol(self, component, symbol):
+    """
+    this call occurs when the preprocessor component is about to redefine an already defined symbol
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `symbol: PreprocessorSymbol`                 the symbol that is about to be defined
+
+    Return
+    ------
+    `bool` indicates whether the caller should stop to be executed
+    """
+
+    return ContinueExecution
+  
+  def on_define_new_preprocessor_symbol(self, component, symbol):
+    """
+    this call occurs when the preprocessor component is about to define a new symbol (not defined yet)
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `symbol: PreprocessorSymbol`                 the symbol that is about to be defined
+
+    Return
+    ------
+    `bool` indicates whether the caller should stop to be executed
+    """
+
+    return ContinueExecution
+  
+  def on_undefine_preprocessor_symbol(self, component, symbol_name):
+    """
+    this call occurs when the preprocessor component is about to undefine a defined symbol
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `symbol_name: str`                           the symbol name that is about to be defined
+
+    Return
+    ------
+    `bool` indicates whether the caller should stop to be executed
+    """
+
+    return ContinueExecution
+  
+  def on_undefine_preprocessor_symbol_not_found(self, component, symbol_name):
+    """
+    this call occurs when the preprocessor component is about to undefine an undefined symbol
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `symbol_name: str`                           the symbol name that is about to be defined
+
+    Return
+    ------
+    `None`
+    """
+
+    return None
+  
+  def on_unknown_preprocessor_directive(self, component, directive):
+    """
+    this call occurs when the preprocessor component is about to report the invalid directive
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `directive: Token`                           the symbol name that is about to be defined
+
+    Return
+    ------
+    `bool` indicates whether the caller should stop to be executed
     """
 
     return ContinueExecution

@@ -7,6 +7,23 @@ from data           import *
 from datetime       import datetime
 from xlexer         import Lexer
 
+SPECIAL_IDS = {
+  '__FILE__': lambda prep, token: [Token('str', prep.src_info.filename, token.pos)],
+  '__LINE__': lambda prep, token: [Token('digit', str(token.pos.row), token.pos)],
+  '__DATE__': lambda prep, token: inline_function(
+    date := datetime.today().strftime('%Y/%m/%d'),
+    ret=Token('str', date, token.pos)
+  ),
+  '__TIME__': lambda prep, token: inline_function(
+    time := datetime.today().strftime('%H:%M:%S'),
+    ret=Token('str', time, token.pos)
+  ),
+  '__TIMESTAMP__': lambda prep, token: inline_function(
+    timestamp := datetime.today().strftime('%Y/%m/%d %H:%M:%S'),
+    Token('str', timestamp, token.pos)
+  )
+}
+
 class Preprocessor(CompilerComponent):
   def __init__(self, src_info, tokens, symbols=[]):
     super().__init__(src_info)
@@ -43,41 +60,32 @@ class Preprocessor(CompilerComponent):
     return Out(False)
 
   def expand_id(self, token):
-    match token.value:
-      case '__FILE__':
-        self.output.append(Token('str', self.src_info.filename, token.pos))
-
-      case '__LINE__':
-        self.output.append(Token('digit', str(token.pos.row), token.pos))
-        
-      case '__DATE__':
-        date = datetime.today().strftime('%Y/%m/%d')
-        self.output.append(Token('str', date, token.pos))
-      
-      case '__TIME__':
-        time = datetime.today().strftime('%H:%M:%S')
-        self.output.append(Token('str', time, token.pos))
-      
-      case '__TIMESTAMP__':
-        timestamp = datetime.today().strftime('%Y/%m/%d %H:%M:%S')
-        self.output.append(Token('str', timestamp, token.pos))
-
-      case _:
-        self.output.append(token)
+    try:
+      self.output.append(SPECIAL_IDS[token.value](self, token))
+    except KeyError:
+      self.output.append(token)
 
   def define_symbol(self, symbol_to_define):
     for (i, symbol) in enumerate(self.symbols):
       if symbol.name == symbol_to_define.name:
+        if plugin_call('on_redefine_preprocessor_symbol', self.define_symbol, symbol=symbol_to_define) == StopExecution: return
+
         self.symbols[i] = symbol_to_define
         return
+
+    if plugin_call('on_define_new_preprocessor_symbol', self.define_symbol, symbol=symbol_to_define) == StopExecution: return
 
     self.symbols.append(symbol_to_define)
 
   def undefine_symbol(self, name):
     for (i, symbol) in enumerate(self.symbols):
       if symbol.name == name:
+        if plugin_call('on_undefine_preprocessor_symbol', self.undefine_symbol, symbol_name=name) == StopExecution: return
+
         self.symbols.pop(i)
         return
+    
+    plugin_call('on_undefine_preprocessor_symbol_not_found', self.undefine_symbol, symbol_name=name)
 
   def collect_macro_call_arg(self):
     argument = []
@@ -105,6 +113,20 @@ class Preprocessor(CompilerComponent):
         l_brackets -= 1
       
       argument.append(token)
+    
+    return argument
+
+  def collect_standard_path_inside_include(self):
+    result = ''
+
+    # skipping '<'
+    self.idx += 1;
+
+    while not self.eof() and self.cur.kind != '>':
+      result += self.cur.value
+      self.idx += 1
+
+    return (result, self.cur.pos.col)
 
   def collect_macro_call_args(self):
     arguments = []
@@ -146,11 +168,22 @@ class Preprocessor(CompilerComponent):
         else:
           expanded_tokens = [token]
 
-    for token in expanded_tokens:
-      token = deepcopy(token)
+    for (i, expanded_token) in enumerate(expanded_tokens):
+      expanded_token = deepcopy(expanded_token)
+      
+      if i == 0:
+        expanded_token.pos = token.pos
+      else:
+        expanded_token.pos = SourcePosition(
+          token.pos.src_info,
+          token.pos.row,
+          token.pos.col,
+          token.pos.len,
+          expanded_token.pos.spacing,
+          expanded_token.pos.is_on_new_line
+        )
 
-      token.pos = token.pos
-      self.output.append(token)
+      self.output.append(expanded_token)
   
   def collect_tokens_until_newline(self):
     tokens = []
@@ -171,8 +204,9 @@ class Preprocessor(CompilerComponent):
       self.report("the header is including it self", path_pos)
       return
 
-    lexer_result = Lexer(SourceInfo(path)).gen().print_errors_and()
-    preprocessor = Preprocessor(self.src_info, lexer_result.result, self.symbols)
+    lexer = Lexer(SourceInfo(path))
+    lexer_result = lexer.gen().print_errors_and()
+    preprocessor = Preprocessor(lexer.src_info, lexer_result.result, self.symbols)
     preprocessor.output = self.output
     preprocessor.gen().print_errors()
 
@@ -329,7 +363,7 @@ class Preprocessor(CompilerComponent):
             filename = abspath(f'{base}/{relative_path}')
 
             if not file_exists(filename):
-              report_invalid_path(path_token.pos)
+              report_invalid_path(relative_path_pos)
             else:
               self.include_file(filename, relative_path_pos)
           
@@ -340,7 +374,8 @@ class Preprocessor(CompilerComponent):
         raise NotImplementedError('implement pragma directive')
 
       case _:
-        report_invalid_directive()
+        if not plugin_call('on_unknown_preprocessor_directive', self.expand_preprocessor_directive, directive=directive):
+          report_invalid_directive()
 
   def extend_token_or_write_current(self):
     token = self.cur
