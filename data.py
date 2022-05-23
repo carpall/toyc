@@ -5,6 +5,12 @@ class Node:
   def __repr__(self):
     return f'{self.__class__.__name__} {vars(self)}'
 
+class BadNode(Node):
+  def __init__(self, token):
+    super().__init__(token.pos)
+    
+    self.token = token
+
 class Token(Node):
   def __init__(self, kind, value, pos):
     super().__init__(pos)
