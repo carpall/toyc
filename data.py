@@ -1,22 +1,42 @@
-class Node:
-  def __init__(self, pos):
+from compiler_utils import extend_pos
+from utils          import Debug
+
+class Node(Debug):
+  def __init__(self, pos, **kwargs):
+    self.__dict__ = kwargs
     self.pos = pos
-  
-  def __repr__(self):
-    return f'{self.__class__.__name__} {vars(self)}'
+
+    super().__init__(['pos'])
+
+class IntTypeNode(Node):
+  def __init__(self, kind, pos):
+    super().__init__(pos, kind=kind)
+
+class BlockNode(Node):
+  def __init__(self, nodes, pos):
+    super().__init__(pos, nodes=nodes)
+
+class FnNode(Node):
+  class ParamNode(Node):
+    def __init__(self, id, type):
+      super().__init__(extend_pos(id.pos, type.pos), type=type, id=id)
+
+  def __init__(self, type, id, params, body):
+    super().__init__(
+      id.pos,
+      type=type,
+      id=id,
+      params=params,
+      body=body
+    )
 
 class BadNode(Node):
   def __init__(self, token):
-    super().__init__(token.pos)
-    
-    self.token = token
+    super().__init__(token.pos, token=token)
 
 class Token(Node):
   def __init__(self, kind, value, pos):
-    super().__init__(pos)
-
-    self.kind = kind
-    self.value = value
+    super().__init__(pos, kind=kind, value=value)
 
 class PreprocessorSymbol:
   def __init__(self, name, value):

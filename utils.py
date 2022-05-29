@@ -39,7 +39,30 @@ class Option:
   def is_some_and_then(self, and_then):
     return and_then(self.value) if self.is_some else self
 
-class Out:
+debug_indent = ''
+
+class Debug:
+  def __init__(self, fields_to_ignore=[]):
+    self.to_ignore = fields_to_ignore + ['to_ignore']
+
+  def __repr__(self):
+    global debug_indent
+
+    result = f'{self.__class__.__name__} {{'
+    debug_indent += '  '
+
+    for key, value in self.__dict__.items():
+      if key in self.to_ignore:
+        continue
+
+      result += f'\n{debug_indent}{key}: {repr(value)},'
+
+    debug_indent = debug_indent[:-2]
+    result += f'\n{debug_indent}}}'
+
+    return result
+
+class Out(Debug):
   def __init__(self, ret, **params):
     if 'ret' in params:
       raise NameError('ret is a reserved field')
@@ -49,12 +72,9 @@ class Out:
   
   def unwrap(self):
     return self.ret
-  
-  def __repr__(self):
-    return f'Out {vars(self)}'
 
-def range_to_len(start, stop):
-  return stop - start
+def todo():
+  raise NotImplementedError('todo')
 
 def dbg(**kwargs):
   print('DBG ->', kwargs)

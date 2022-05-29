@@ -13,15 +13,15 @@ src_info = SourceInfo('samples/sam1.c')
 
 lexer_result = Lexer(src_info).gen()
 lexer_result.print_errors_and_then(
-  lambda tokens: [print('Lexer:'), print('\n'.join(map(lambda s: '  ' + s, map(repr, tokens)))), print()]
+  lambda tokens: None # [print('LEX'), print(*tokens, sep='\n'), print('END LEX\n\n')]
 )
 
 preprocessor_result = Preprocessor(src_info, lexer_result.result).gen()
 preprocessor_result.print_errors_and_then(
-  lambda tokens: [print('Preprocessor:'), print('\n'.join(map(lambda s: '  ' + s, map(repr, tokens)))), print()]
+  lambda tokens: None # [print('PREP'), print(*tokens, sep='\n'), print('END PREP\n\n')]
 )
 
 parser_result = Parser(src_info, preprocessor_result.result).gen()
 parser_result.print_errors_and_then(
-  lambda ast: [print('Parser:'), print(ast), print()]
+  lambda ast: [print('PAR'), print(ast), print('END PAR')]
 )

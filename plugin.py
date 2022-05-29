@@ -176,3 +176,18 @@ class Plugin:
     """
 
     return ContinueExecution
+  
+  def match_next_node(self, component):
+    """
+    this call occurs when the parser component is matching nodes to add to the ast, in any context (global, local, expression, etc...)
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+
+    Return
+    ------
+    `Out(ret: bool, new_idx: int, node: Node)` where `ret` indicates whether matching the node, `new_idx` it's the index to which the caller must skip, 'node' it's the matched node
+    """
+
+    return Out(False, new_idx=None, node=None)

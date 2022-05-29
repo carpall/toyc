@@ -80,3 +80,9 @@ class CompilerResult:
   def print_errors_and_then(self, and_then):
     self.print_errors()
     and_then(self.result)
+
+def extend_pos(pos_left, pos_right):
+  return SourcePosition(pos_left.src_info, pos_left.row, pos_left.col, (pos_right.col - pos_left.col) + pos_right.len, None, None)
+
+def range_to_len(start, stop):
+  return stop - start
