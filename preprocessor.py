@@ -68,21 +68,28 @@ class Preprocessor(CompilerComponent):
   def define_symbol(self, symbol_to_define):
     for (i, symbol) in enumerate(self.symbols):
       if symbol.name == symbol_to_define.name:
-        if plugin_call('on_redefine_preprocessor_symbol', self.define_symbol, symbol=symbol_to_define) == StopExecution: return
+        plugin_call('on_redefine_preprocessor_symbol', self.define_symbol, symbol=symbol_to_define)
 
         self.symbols[i] = symbol_to_define
+
+        plugin_call('on_redefined_preprocessor_symbol', self.define_symbol, symbol=symbol_to_define)
+
         return
 
-    if plugin_call('on_define_new_preprocessor_symbol', self.define_symbol, symbol=symbol_to_define) == StopExecution: return
+    plugin_call('on_define_new_preprocessor_symbol', self.define_symbol, symbol=symbol_to_define)
 
     self.symbols.append(symbol_to_define)
+
+    plugin_call('on_defined_new_preprocessor_symbol', self.define_symbol, symbol=symbol_to_define)
 
   def undefine_symbol(self, name):
     for (i, symbol) in enumerate(self.symbols):
       if symbol.name == name:
-        if plugin_call('on_undefine_preprocessor_symbol', self.undefine_symbol, symbol_name=name) == StopExecution: return
+        plugin_call('on_undefine_preprocessor_symbol', self.undefine_symbol, symbol_name=name)
 
         self.symbols.pop(i)
+
+        plugin_call('on_undefined_preprocessor_symbol', self.undefine_symbol, symbol_name=name)
         return
     
     plugin_call('on_undefine_preprocessor_symbol_not_found', self.undefine_symbol, symbol_name=name)
@@ -374,7 +381,7 @@ class Preprocessor(CompilerComponent):
         raise NotImplementedError('implement pragma directive')
 
       case _:
-        if not plugin_call('on_unknown_preprocessor_directive', self.expand_preprocessor_directive, directive=directive):
+        if plugin_call('on_unknown_preprocessor_directive', self.expand_preprocessor_directive, directive=directive) != 'avoid_reporting':
           report_invalid_directive()
 
   def extend_token_or_write_current(self):

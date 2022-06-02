@@ -2,9 +2,6 @@ from os    import listdir
 from types import ModuleType
 from utils import Out
 
-StopExecution = True
-ContinueExecution = False
-
 PLUGINS_CLASSES   = []
 PLUGINS_INSTANCES = []
 
@@ -19,12 +16,8 @@ def init_plugins(**kwargs):
     PLUGINS_INSTANCES.append(plugin_class(**kwargs))
 
 def plugin_call(impl_name, component, **kwargs):
-  results = [getattr(plugin, impl_name)(component, **kwargs) for plugin in PLUGINS_INSTANCES]
-
-  if any(results) != all(results):
-    raise PluginError(f'plugins conflict on implementation of {impl_name} hook for {component}')
-  
-  return results[0]
+  for plugin in PLUGINS_INSTANCES:
+    yield getattr(plugin, impl_name)(component, **kwargs)
 
 class PluginError(Exception):
   pass
@@ -43,14 +36,30 @@ class Plugin:
     Parameters
     ----------
     - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
-    - `error: CompilerError`         the error instance
+    - `error: CompilerError`                       the error instance
 
     Return
     ------
-    `bool` indicates whether the caller should stop to be executed
+    `None`
     """
 
-    return ContinueExecution
+    return
+  
+  def on_error_reported(self, component, error):
+    """
+    this call occurs when an error has just been added
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `error: CompilerError`                       the error instance
+
+    Return
+    ------
+    `None`
+    """
+
+    return
 
   def match_next_token(self, component):
     """
@@ -67,21 +76,6 @@ class Plugin:
 
     return Out(False, collector=lambda lexer: None)
   
-  def match_comment_pattern(self, component):
-    """
-    this call occurs when the lexer component is trying to find a comment
-
-    Parameters
-    ----------
-    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
-
-    Return
-    ------
-    `Out(ret: bool, skipper: function(Lexer) -> None)` where `ret` indicates whether matching the comment, `skipper` is a function to skip the comment
-    """
-
-    return Out(False, skipper=lambda lexer: None)
-  
   def on_token_append_to_lexer_output(self, component):
     """
     this call occurs when the lexer component is about to add a token to the token list
@@ -92,10 +86,25 @@ class Plugin:
 
     Return
     ------
-    `bool` indicates whether the caller should stop to be executed
+    `None`
     """
 
-    return ContinueExecution
+    return
+  
+  def on_token_appended_to_lexer_output(self, component):
+    """
+    this call occurs when the lexer component just added a token to the token list
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+
+    Return
+    ------
+    `None`
+    """
+
+    return
   
   def on_redefine_preprocessor_symbol(self, component, symbol):
     """
@@ -108,10 +117,26 @@ class Plugin:
 
     Return
     ------
-    `bool` indicates whether the caller should stop to be executed
+    `None`
     """
 
-    return ContinueExecution
+    return
+  
+  def on_redefined_preprocessor_symbol(self, component, symbol):
+    """
+    this call occurs when the preprocessor component just redefined an already defined symbol
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `symbol: PreprocessorSymbol`                 the symbol that is about to be defined
+
+    Return
+    ------
+    `None`
+    """
+
+    return
   
   def on_define_new_preprocessor_symbol(self, component, symbol):
     """
@@ -124,10 +149,26 @@ class Plugin:
 
     Return
     ------
-    `bool` indicates whether the caller should stop to be executed
+    `None`
     """
 
-    return ContinueExecution
+    return
+  
+  def on_defined_new_preprocessor_symbol(self, component, symbol):
+    """
+    this call occurs when the preprocessor component just defined a new symbol (not defined yet)
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `symbol: PreprocessorSymbol`                 the symbol that is about to be defined
+
+    Return
+    ------
+    `None`
+    """
+
+    return
   
   def on_undefine_preprocessor_symbol(self, component, symbol_name):
     """
@@ -140,10 +181,26 @@ class Plugin:
 
     Return
     ------
-    `bool` indicates whether the caller should stop to be executed
+    `None`
     """
 
-    return ContinueExecution
+    return
+  
+  def on_undefined_preprocessor_symbol(self, component, symbol_name):
+    """
+    this call occurs when the preprocessor component just undefined a defined symbol
+
+    Parameters
+    ----------
+    - `component: MethodType[CompilerComponent.*]` the compiler component instance which made the plugin call
+    - `symbol_name: str`                           the symbol name that is about to be defined
+
+    Return
+    ------
+    `None`
+    """
+
+    return
   
   def on_undefine_preprocessor_symbol_not_found(self, component, symbol_name):
     """
@@ -159,7 +216,7 @@ class Plugin:
     `None`
     """
 
-    return None
+    return
   
   def on_unknown_preprocessor_directive(self, component, directive):
     """
@@ -172,10 +229,13 @@ class Plugin:
 
     Return
     ------
-    `bool` indicates whether the caller should stop to be executed
+    `str` a string indicating races details of which the caller must take into account after the call:
+    {
+      'avoid_reporting': the caller won't report the 'unknown directive' error
+    }
     """
 
-    return ContinueExecution
+    return
   
   def match_next_node(self, component):
     """

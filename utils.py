@@ -1,13 +1,15 @@
 from types import LambdaType
 
+debug_indent = ''
+
 class Option:
   def __init__(self, value):
     self.value = value
   
   @property
   def is_some(self):
-    return self.value != None
-  
+    return self.value is not None
+
   @property
   def is_none(self):
     return not self.is_some
@@ -38,8 +40,6 @@ class Option:
   
   def is_some_and_then(self, and_then):
     return and_then(self.value) if self.is_some else self
-
-debug_indent = ''
 
 class Debug:
   def __init__(self, fields_to_ignore=[]):

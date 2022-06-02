@@ -23,5 +23,5 @@ preprocessor_result.print_errors_and_then(
 
 parser_result = Parser(src_info, preprocessor_result.result).gen()
 parser_result.print_errors_and_then(
-  lambda ast: [print('PAR'), print(ast), print('END PAR')]
+  lambda ast: [print('PAR'), print(ast.rewrite()), print('END PAR')]
 )

@@ -32,6 +32,8 @@ DOUBLE_PUNCTUATION = [
 ]
 
 KEYWORDS = [
+  'signed',
+  'unsigned',
   'struct',
   'char',
   'short',
@@ -50,11 +52,11 @@ class Lexer(CompilerComponent):
     self.col_start_idx = 0
     self.end_idx_of_last_token = 0
     self.is_on_new_line = False
-  
+
   @property
   def src(self):
     return self.src_info.filecontent
-  
+
   @property
   def bck(self):
     try:
@@ -69,7 +71,7 @@ class Lexer(CompilerComponent):
     except IndexError:
       self.report('unexpected eof', self.cur_pos)
       return '\0'
-  
+
   @property
   def nxt(self):
     try:
@@ -85,23 +87,27 @@ class Lexer(CompilerComponent):
 
   @property
   def cur_pos(self):
-    len = range_to_len(self.idx, self.idx + 1)
-    ionl = self.get_is_on_new_line()
+    _len = range_to_len(self.idx, self.idx + 1)
+    is_on_new_line = self.get_is_on_new_line()
 
-    return SourcePosition(self.src_info, self.row, self.get_col(), len, self.get_spacing(len, ionl), ionl)
+    return SourcePosition(
+      self.src_info,
+      self.row,
+      self.get_col(),
+      _len,
+      self.get_spacing(_len, is_on_new_line),
+      is_on_new_line
+    )
 
-  def get_spacing(self, len, is_on_new_line):
-    spacing = self.idx - self.end_idx_of_last_token - len
+  def get_spacing(self, _len, is_on_new_line):
+    spacing = self.idx - self.end_idx_of_last_token - _len
 
     return 0 if spacing < 0 or is_on_new_line else spacing
 
   def match_comment_pattern(self):
-    plugins_matched_comment = plugin_call('match_comment_pattern', self.match_comment_pattern)
-    matched_comment = Out(self.cur == '/' and self.nxt.is_some_with_any(['/', '*']), skipper=lambda _: self.skip_comment(self.nxt.is_some_with('/')))
-
     return Out(
-      plugins_matched_comment.unwrap() or matched_comment.unwrap(),
-      skipper=plugins_matched_comment.skipper if plugins_matched_comment else matched_comment.skipper
+      self.cur == '/' and self.nxt.is_some_with_any(['/', '*']),
+      skipper=lambda _: self.skip_comment(self.nxt.is_some_with('/'))
     )
 
   def eat_comment(self):
@@ -127,9 +133,9 @@ class Lexer(CompilerComponent):
       case _:
         if self.cur not in USELESS_CHARS:
           return False
-        
+
         self.idx += 1
-    
+
     return True
 
   def eat_useless_chars(self):
@@ -154,9 +160,9 @@ class Lexer(CompilerComponent):
 
     self.idx -= 1
 
-    len = range_to_len(start_pos, self.idx + 1)
-    ionl = self.get_is_on_new_line()
-    return (seq, SourcePosition(self.src_info, self.row, col, len, self.get_spacing(len, ionl), ionl))
+    _len = range_to_len(start_pos, self.idx + 1)
+    is_on_new_line = self.get_is_on_new_line()
+    return (seq, SourcePosition(self.src_info, self.row, col, _len, self.get_spacing(_len, is_on_new_line), is_on_new_line))
 
   def collect_id(self):
     (id, pos) = self.collect_seq_until(lambda bck, cur, nxt: cur.isalnum() or cur == '_', False)
@@ -166,12 +172,12 @@ class Lexer(CompilerComponent):
   def convert_to_keyword_or_id(self, id):
     if id.value in KEYWORDS:
       id.kind = id.value
-    
+
     return id
-  
+
   def check_digit(self, digit, pos):
     chars = str(digit)
-    
+
     for (i, c) in enumerate(chars):
       if c.isalpha() or (c == '_' and i == len(chars) - 1):
         self.report('invalid digit', pos)
@@ -182,7 +188,7 @@ class Lexer(CompilerComponent):
     self.check_digit(digit, pos)
 
     return Token('digit', digit.replace('_', ''), pos)
-  
+
   def collect_string(self):
     # skipping first '"'
     self.idx += 1
@@ -193,7 +199,7 @@ class Lexer(CompilerComponent):
     self.idx += 1
 
     return Token('str', value, pos)
-  
+
   def collect_char(self):
     # skipping first '\''
     self.idx += 1
@@ -218,8 +224,14 @@ class Lexer(CompilerComponent):
     return result
 
   def next_token(self):
-    if (matches := plugin_call('match_next_token', self.next_token)).unwrap():
-      token = matches.collector(self)
+    token = None
+
+    for matches in plugin_call('match_next_token', self.next_token):
+      if matches.unwrap():
+        token = matches.collector(self)
+    
+    if token is None:
+      pass
     elif self.cur.isalpha() or self.cur == '_':
       token = self.convert_to_keyword_or_id(self.collect_id())
     elif self.cur.isdigit():
@@ -239,15 +251,17 @@ class Lexer(CompilerComponent):
 
     while True:
       self.eat_useless_chars()
-    
+
       if self.eof():
         break
 
       token = self.next_token()
       self.end_idx_of_last_token = self.idx - 1
 
-      if plugin_call('on_token_append_to_lexer_output', self.gen) == StopExecution: continue
-      
+      plugin_call('on_token_append_to_lexer_output', self.gen)
+
       self.output.append(token)
+
+      plugin_call('on_token_appended_to_lexer_output', self.gen)
 
     return CompilerResult(self.errors_bag, self.output)

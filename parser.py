@@ -1,4 +1,4 @@
-from compiler_utils import CompilerComponent, CompilerResult
+from compiler_utils import CompilerComponent, CompilerResult, SourcePosition
 from utils          import *
 from data           import *
 from plugin         import plugin_call
@@ -19,6 +19,10 @@ class Parser(CompilerComponent):
   @property
   def bck(self):
     return self.tokens[self.idx - 1]
+
+  @property
+  def global_pos(self):
+    return SourcePosition(self.src_info, None, None, None, None, None)
 
   def eof(self):
     return self.idx >= len(self.tokens)
@@ -119,7 +123,7 @@ class Parser(CompilerComponent):
     if (matches_int_type := self.match_int_type()).unwrap():
       return matches_int_type
     
-    todo()
+    return Out(False)
 
   def collect_fn_param_decl(self):
     type = self.expect(self.match_type).type
@@ -164,7 +168,7 @@ class Parser(CompilerComponent):
     self.advance()
 
     while not self.match_token('}'):
-      nodes.append(self.expect(self.next_node()))
+      nodes.append(self.expect(self.match_expr))
 
       if not (matches_colon := self.match_token(';')).unwrap() and not (matches_rbrace := self.match_on_idx(self.idx - 1, self.match_token, '}')).unwrap():
         self.report("expected ';'", matches_colon.node.pos)
@@ -173,7 +177,7 @@ class Parser(CompilerComponent):
     self.expect(self.match_token, '}')
     new_idx = self.save_idx_and_update(old_idx)
 
-    return Out(True, new_idx=new_idx, node=BlockNode(nodes, extend_pos(start_pos, end_pos)))
+    return Out(True, new_idx=new_idx, node=ContainerNode(nodes, extend_pos(start_pos, end_pos)))
 
   def save_idx_and_update(self, old_idx):
     new_idx = self.save_idx()
@@ -181,7 +185,9 @@ class Parser(CompilerComponent):
 
     return new_idx
 
-  def collect_typed_decl(self, delc_type):
+  def match_typed_node(self, matched_type):
+    old_idx = self.save_idx_and_update(matched_type.new_idx)
+    decl_type = matched_type.type
     decl_name = self.expect(self.match_token, 'id').node
     
     match self.cur.kind:
@@ -189,31 +195,34 @@ class Parser(CompilerComponent):
         params = self.collect_fn_params_decl()
         block = self.expect_any((self.match_block, []), (self.match_token, [';'])).node
 
-        return FnNode(delc_type, decl_name, params, block if isinstance(block, BlockNode) else None)
+        node = FnNode(decl_type, decl_name, params, block if isinstance(block, ContainerNode) else None)
 
-      case ';' | '=': # global var decl
-        pass
+      case ';' | '=': # var decl
+        self.advance()
 
-  def next_node(self):
-    if (matches_node := plugin_call('match_next_node', self.next_node)).unwrap():
-      node = matches_node.node
-      self.update_idx(matches_node.new_idx)
-    elif (matches_type := self.match_type()).unwrap():
-      self.update_idx(matches_type.new_idx)
-      node = self.collect_typed_decl(matches_type.type)
-    else:
-      self.advance()
-      node = BadNode(self.cur)
-      self.report('unexpected token', self.cur.pos)
+        node = VarNode(decl_type, decl_name, self.expect(self.match_expr) if self.bck.kind == '=' else None)
+      
+      case _:
+        return Out(False)
     
-    return node
+    return Out(True, new_idx=self.save_idx_and_update(old_idx), node=node)
+
+  def match_expr(self):
+    for plugin_matches_node in plugin_call('match_next_node', self.match_expr):
+      if plugin_matches_node.unwrap():
+        return plugin_matches_node
+
+    if (matched_type := self.match_type()).unwrap():
+      return self.match_typed_node(matched_type)
+    
+    return Out(False)
 
   def gen(self):
     self.output = []
 
     while not self.eof():
-      node = self.next_node()
+      node = self.expect(self.match_expr)
 
       self.output.append(node)
 
-    return CompilerResult(self.errors_bag, self.output)
+    return CompilerResult(self.errors_bag, ContainerNode(self.output, self.global_pos))
