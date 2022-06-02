@@ -62,13 +62,15 @@ class Debug:
 
     return result
 
-class Out(Debug):
+class Out(Debug, Option):
   def __init__(self, ret, **params):
     if 'ret' in params:
       raise NameError('ret is a reserved field')
 
     self.__dict__ = params
     self.ret = ret
+
+    super().__init__([])
   
   def unwrap(self):
     return self.ret

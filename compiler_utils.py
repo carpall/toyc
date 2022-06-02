@@ -1,6 +1,6 @@
 from os.path import abspath
 from utils   import *
-from plugin  import PluginError, StopExecution, plugin_call
+from plugin  import plugin_call
 
 class SourceInfo:
   def __init__(self, filename):

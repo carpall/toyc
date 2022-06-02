@@ -36,12 +36,19 @@ class ContainerNode(Node):
     rewriter_indent = rewriter_indent[:-2]
     return r + f'\n{rewriter_indent}}}'
 
+class BinNode(Node):
+  def __init__(self, op, left, right):
+    super().__init__(extend_pos(left.pos, right.pos), op=op, left=left, right=right)
+  
+  def rewrite(self):
+    return f'({self.left.rewrite()} {self.op.rewrite()} {self.right.rewrite()})'
+
 class VarNode(Node):
   def __init__(self, type, name, expr):
     super().__init__(name.pos, type=type, name=name, expr=expr)
   
   def rewrite(self):
-    return f'{self.type.rewrite()} {self.name.rewrite()} {self.expr.rewrite() if self.expr is not None else ""};'
+    return f'{self.type.rewrite()} {self.name.rewrite()}{f" = {self.expr.rewrite()}" if self.expr is not None else ""};'
 
 class FnNode(Node):
   class ParamNode(Node):

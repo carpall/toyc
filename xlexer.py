@@ -230,7 +230,7 @@ class Lexer(CompilerComponent):
       if matches.unwrap():
         token = matches.collector(self)
     
-    if token is None:
+    if token is not None:
       pass
     elif self.cur.isalpha() or self.cur == '_':
       token = self.convert_to_keyword_or_id(self.collect_id())

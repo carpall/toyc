@@ -1,3 +1,4 @@
+from turtle import right
 from compiler_utils import CompilerComponent, CompilerResult, SourcePosition
 from utils          import *
 from data           import *
@@ -23,6 +24,9 @@ class Parser(CompilerComponent):
   @property
   def global_pos(self):
     return SourcePosition(self.src_info, None, None, None, None, None)
+  
+  def cur_or_last(self):
+    return self.cur if not self.eof() else self.tokens[-1]
 
   def eof(self):
     return self.idx >= len(self.tokens)
@@ -42,6 +46,8 @@ class Parser(CompilerComponent):
   def expect(self, method, *args):
     if not (matches := method(*args)).unwrap():
       self.report(self.get_expecting_error_msg(method, args), self.cur.pos)
+      self.update_idx(new_idx := self.idx + 1)
+      return Out(False, new_idx=new_idx, node=BadNode(self.cur_or_last()))
     
     self.update_idx(matches.new_idx)
     return matches
@@ -60,6 +66,13 @@ class Parser(CompilerComponent):
 
   def match_token(self, kind):
     return Out(self.cur.kind == kind, new_idx=self.idx + 1, node=self.cur)
+  
+  def match_any_token(self, kinds):
+    for kind in kinds:
+      if (matches_token := self.match_token(kind)).unwrap():
+        return matches_token
+    
+    return Out(False)
 
   def convert_types_chain_to_single(self, chain, pos):
     try:
@@ -200,28 +213,59 @@ class Parser(CompilerComponent):
       case ';' | '=': # var decl
         self.advance()
 
-        node = VarNode(decl_type, decl_name, self.expect(self.match_expr) if self.bck.kind == '=' else None)
+        expr = self.expect(self.match_expr).node if self.bck.kind == '=' else None
+        self.expect(self.match_token, ';')
+
+        node = VarNode(decl_type, decl_name, expr)
+        
       
       case _:
         return Out(False)
     
     return Out(True, new_idx=self.save_idx_and_update(old_idx), node=node)
 
+  def match_term(self):
+    if (matched_type := self.match_type()).unwrap():
+      return self.match_typed_node(matched_type)
+    
+    if (matches_digit := self.match_token('digit')).unwrap():
+      return matches_digit
+    
+    if (matches_id := self.match_token('id')).unwrap():
+      return matches_id
+    
+    return Out(False)
+
+  def match_bin_or_term(self, members_matcher, ops):
+    if not (matches_left := members_matcher()).unwrap():
+      return Out(False)
+    
+    old_idx = self.save_idx_and_update(matches_left.new_idx)
+    left = matches_left.node
+
+    while not self.eof() and (matches_op := self.match_any_token(ops)).unwrap():
+      self.update_idx(matches_op.new_idx)
+
+      right = self.expect(members_matcher).node
+      left = BinNode(matches_op.node, left, right)
+
+    return Out(True, new_idx=self.save_idx_and_update(old_idx), node=left)
+
   def match_expr(self):
     for plugin_matches_node in plugin_call('match_next_node', self.match_expr):
       if plugin_matches_node.unwrap():
         return plugin_matches_node
 
-    if (matched_type := self.match_type()).unwrap():
-      return self.match_typed_node(matched_type)
-    
-    return Out(False)
+    return self.match_bin_or_term(
+      lambda: self.match_bin_or_term(self.match_term, ['*', '/']),
+      ['+', '-']
+    )
 
   def gen(self):
     self.output = []
 
     while not self.eof():
-      node = self.expect(self.match_expr)
+      node = self.expect(self.match_expr).node
 
       self.output.append(node)
 

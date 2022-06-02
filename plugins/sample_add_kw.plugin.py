@@ -1,4 +1,4 @@
-from plugin         import Plugin, StopExecution, ContinueExecution
+from plugin         import Plugin
 from compiler_utils import Out
 from data           import Token
 
