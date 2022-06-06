@@ -1,6 +1,5 @@
 from types import LambdaType
-
-debug_indent = ''
+from json  import dumps
 
 class Option:
   def __init__(self, value):
@@ -41,43 +40,23 @@ class Option:
   def is_some_and_then(self, and_then):
     return and_then(self.value) if self.is_some else self
 
-class Debug:
-  def __init__(self, fields_to_ignore=[]):
-    self.to_ignore = fields_to_ignore + ['to_ignore']
-
-  def __repr__(self):
-    global debug_indent
-
-    result = f'{self.__class__.__name__} {{'
-
-    if len(self.__dict__) - len(self.to_ignore) == 0:
-      return result + ' }'
-
-    debug_indent += '  '
-
-    for key, value in self.__dict__.items():
-      if key in self.to_ignore:
-        continue
-
-      result += f'\n{debug_indent}{key}: {repr(value)},'
-
-    debug_indent = debug_indent[:-2]
-    result += f'\n{debug_indent}}}'
-
-    return result
-
-class Out(Debug, Option):
+class Out(Option):
   def __init__(self, ret, **params):
     if 'ret' in params:
       raise NameError('ret is a reserved field')
 
     self.__dict__ = params
     self.ret = ret
-
-    super().__init__([])
   
   def unwrap(self):
     return self.ret
+
+class Debug:
+  def __init__(self, to_ignore):
+    self.to_ignore = to_ignore + ['to_ignore']
+  
+  def __getstate__(self):
+    return { k: v for k, v in self.__dict__.items() if k not in self.to_ignore }
 
 def todo():
   raise NotImplementedError('todo')

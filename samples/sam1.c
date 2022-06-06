@@ -1,1 +1,7 @@
-int x = 10-;
+int main() {
+    int x = 0;
+
+    if (1) {
+
+    }
+}

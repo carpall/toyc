@@ -5,6 +5,7 @@ from xlexer         import *
 from preprocessor   import *
 from parser         import *
 from plugin         import *
+from jsonpickle     import encode
 
 load_plugins('plugins/')
 init_plugins(utils_module=compiler_utils, data_module=data, lexer_module=xlexer, preprocessor_module=preprocessor)
@@ -23,5 +24,6 @@ preprocessor_result.print_errors_and_then(
 
 parser_result = Parser(src_info, preprocessor_result.result).gen()
 parser_result.print_errors_and_then(
-  lambda ast: [print('PAR'), print(ast), print('END PAR')]
+  # lambda ast: [print('PAR'), print(encode(ast, indent=2)), print('END PAR')]
+  lambda ast: [print('PAR'), print(ast.rewrite()), print('END PAR')]
 )

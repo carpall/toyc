@@ -84,6 +84,7 @@ class Parser(CompilerComponent):
       f"expected one of '{' '.join([self.get_expecting_error_msg(method, args) for method, args in methods_and_args])}'",
       self.cur.pos
     )
+
     return Out(False, new_idx=self.idx + 1, node=None)
 
   def match_token(self, kind):
@@ -205,11 +206,11 @@ class Parser(CompilerComponent):
 
     self.advance()
 
-    while not self.match_token('}'):
-      nodes.append(self.expect(self.match_expr))
+    while not self.match_token('}').unwrap():
+      nodes.append(self.expect(self.match_expr).node)
 
-      if not (matches_colon := self.match_token(';')).unwrap() and not (matches_rbrace := self.match_on_idx(self.idx - 1, self.match_token, '}')).unwrap():
-        self.report("expected ';'", matches_colon.node.pos)
+      # if not (matches_colon := self.match_token(';')).unwrap() and not self.match_on_idx(self.idx - 1, self.match_token, '}').unwrap():
+      #   self.report("expected ';'", matches_colon.node.pos)
     
     end_pos = self.cur.pos
     self.expect(self.match_token, '}')
@@ -236,9 +237,12 @@ class Parser(CompilerComponent):
         node = FnNode(decl_type, decl_name, params, block if isinstance(block, ContainerNode) else None)
 
       case ';' | '=': # var decl
-        self.advance()
+        expr = None
 
-        expr = self.expect(self.match_expr).node if self.bck.kind == '=' else None
+        if self.cur.kind == '=':
+          self.advance()
+          expr = self.expect(self.match_expr).node if self.bck.kind == '=' else None
+
         self.expect(self.match_token, ';')
 
         node = VarNode(decl_type, decl_name, expr)

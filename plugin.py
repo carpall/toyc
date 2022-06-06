@@ -1,15 +1,28 @@
-from os    import listdir
-from types import ModuleType
-from utils import Out
+import sys
+
+from os      import listdir
+from os.path import isdir
+from types   import ModuleType
+from utils   import Out
 
 PLUGINS_CLASSES   = []
 PLUGINS_INSTANCES = []
 
 def load_plugins(path):
-  for file in listdir(path):
-    if file.endswith('.plugin.py'):
-      module = ModuleType(file.removesuffix('.plugin.py'))
-      exec(open(f'{path}/{file}').read(), module.__dict__)
+  for member in listdir(path):
+    member = f'{path}/{member}'
+
+    if not isdir(member):
+      continue
+
+    plugin_setup_path = f'{member}/setup.py'
+
+    module = ModuleType('setup')
+    module.__file__ = plugin_setup_path
+
+    sys.path.append(member)
+    exec(open(plugin_setup_path).read(), module.__dict__)
+    sys.path.remove(member)
 
 def init_plugins(**kwargs):
   for plugin_class in PLUGINS_CLASSES:
