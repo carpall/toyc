@@ -49,6 +49,10 @@ class Debug:
     global debug_indent
 
     result = f'{self.__class__.__name__} {{'
+
+    if len(self.__dict__) - len(self.to_ignore) == 0:
+      return result + ' }'
+
     debug_indent += '  '
 
     for key, value in self.__dict__.items():

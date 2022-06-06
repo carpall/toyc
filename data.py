@@ -43,6 +43,13 @@ class BinNode(Node):
   def rewrite(self):
     return f'({self.left.rewrite()} {self.op.rewrite()} {self.right.rewrite()})'
 
+class UnaryNode(Node):
+  def __init__(self, op, expr):
+    super().__init__(extend_pos(op.pos, expr.pos), op=op, expr=expr)
+  
+  def rewrite(self):
+    return f'(({self.op.rewrite()}({self.expr.rewrite()}))'
+
 class VarNode(Node):
   def __init__(self, type, name, expr):
     super().__init__(name.pos, type=type, name=name, expr=expr)
@@ -71,8 +78,8 @@ class FnNode(Node):
     return f'{self.type.rewrite()} {self.id.rewrite()}({", ".join(self.params)}) {self.body.rewrite() if self.body is not None else ";"}'
 
 class BadNode(Node):
-  def __init__(self, token):
-    super().__init__(token.pos, token=token)
+  def __init__(self, pos):
+    super().__init__(pos)
   
   def rewrite(self):
     return '<?>'

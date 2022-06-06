@@ -15,18 +15,30 @@ class Parser(CompilerComponent):
 
   @property
   def cur(self):
-    return self.tokens[self.idx]
+    return self.tokens[self.idx] if not self.eof() else Token(
+      'eof',
+      '',
+      SourcePosition(
+        self.src_info,
+        self.last.pos.row,
+        self.last.pos.col + 1,
+        self.last.pos.len,
+        None,
+        None
+      )
+    )
 
   @property
   def bck(self):
     return self.tokens[self.idx - 1]
+  
+  @property
+  def last(self):
+    return self.tokens[-1]
 
   @property
   def global_pos(self):
     return SourcePosition(self.src_info, None, None, None, None, None)
-  
-  def cur_or_last(self):
-    return self.cur if not self.eof() else self.tokens[-1]
 
   def eof(self):
     return self.idx >= len(self.tokens)
@@ -41,13 +53,23 @@ class Parser(CompilerComponent):
     self.idx += count
 
   def get_expecting_error_msg(self, method, args):
-    return f"expected '{args[0]}'" if method.__name__ == 'match_token' else f"expected '{method.__name__.replace('match_', '')}'"
+    match method.__name__:
+      case 'match_token':
+        return f"expected '{args[0]}'"
+      
+      case '<lambda>':
+        return f'expected expr'
+
+      case _:
+        return f"expected '{method.__name__.replace('match_', '')}'"
 
   def expect(self, method, *args):
     if not (matches := method(*args)).unwrap():
       self.report(self.get_expecting_error_msg(method, args), self.cur.pos)
-      self.update_idx(new_idx := self.idx + 1)
-      return Out(False, new_idx=new_idx, node=BadNode(self.cur_or_last()))
+      # self.update_idx(new_idx := self.idx + 1)
+      # return Out(False, new_idx=new_idx, node=BadNode(self.cur))
+
+      return Out(False, new_idx=self.idx, node=BadNode(self.cur.pos))
     
     self.update_idx(matches.new_idx)
     return matches
@@ -65,6 +87,9 @@ class Parser(CompilerComponent):
     return Out(False, new_idx=self.idx + 1, node=None)
 
   def match_token(self, kind):
+    if self.eof():
+      return Out(False)
+
     return Out(self.cur.kind == kind, new_idx=self.idx + 1, node=self.cur)
   
   def match_any_token(self, kinds):
@@ -217,12 +242,32 @@ class Parser(CompilerComponent):
         self.expect(self.match_token, ';')
 
         node = VarNode(decl_type, decl_name, expr)
-        
       
       case _:
         return Out(False)
     
     return Out(True, new_idx=self.save_idx_and_update(old_idx), node=node)
+
+  def collect_parenthesized_expr(self):
+    old_idx = self.save_idx()
+
+    self.expect(self.match_token, '(')
+    expr = self.expect(self.match_expr).node
+    self.expect(self.match_token, ')')
+
+    new_idx = self.save_idx_and_update(old_idx)
+
+    return Out(True, new_idx=new_idx, node=expr)
+
+  def collect_unary_expr(self):
+    old_idx = self.save_idx()
+
+    op = self.expect(self.match_any_token, ['+', '-']).node
+    expr = self.expect(self.match_expr).node
+
+    new_idx = self.save_idx_and_update(old_idx)
+
+    return Out(True, new_idx=new_idx, node=UnaryNode(op, expr))
 
   def match_term(self):
     if (matched_type := self.match_type()).unwrap():
@@ -233,6 +278,12 @@ class Parser(CompilerComponent):
     
     if (matches_id := self.match_token('id')).unwrap():
       return matches_id
+    
+    if self.match_token('(').unwrap():
+      return self.collect_parenthesized_expr()
+    
+    if self.match_any_token(['+', '-']).unwrap():
+      return self.collect_unary_expr()
     
     return Out(False)
 
