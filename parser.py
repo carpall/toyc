@@ -69,10 +69,10 @@ class Parser(CompilerComponent):
   def expect(self, method, *args):
     if not (matches := method(*args)).unwrap():
       self.report(self.get_expecting_error_msg(method, args), self.cur.pos)
-      # self.update_idx(new_idx := self.idx + 1)
-      # return Out(False, new_idx=new_idx, node=BadNode(self.cur))
+      self.update_idx(new_idx := self.idx + 1)
+      return Out(False, new_idx=new_idx, node=BadNode(self.cur))
 
-      return Out(False, new_idx=self.idx, node=BadNode(self.cur.pos))
+      # return Out(False, new_idx=self.idx, node=BadNode(self.cur.pos))
     
     self.update_idx(matches.new_idx)
     return matches
@@ -199,8 +199,11 @@ class Parser(CompilerComponent):
 
     return result
 
-  def match_block(self):
+  def match_block(self, allow_implicit_braces=True):
     if not (_ := self.match_token('{')).unwrap():
+      if allow_implicit_braces:
+        return self.match_expr(True)
+      
       return Out(False)
     
     start_pos = self.cur.pos
@@ -210,7 +213,7 @@ class Parser(CompilerComponent):
     self.advance()
 
     while not self.match_token('}').unwrap():
-      nodes.append(self.expect(self.match_expr).node)
+      nodes.append(self.expect(self.match_expr, True).node)
 
       # if not (matches_colon := self.match_token(';')).unwrap() and not self.match_on_idx(self.idx - 1, self.match_token, '}').unwrap():
       #   self.report("expected ';'", matches_colon.node.pos)
@@ -226,7 +229,10 @@ class Parser(CompilerComponent):
 
     return new_idx
 
-  def match_typed_node(self, matched_type):
+  def match_typed_node(self):
+    if not (matched_type := self.match_type()).unwrap():
+      return Out(False)
+
     old_idx = self.save_idx_and_update(matched_type.new_idx)
     decl_type = matched_type.type
     decl_name = self.expect(self.match_token, 'id').node
@@ -234,7 +240,7 @@ class Parser(CompilerComponent):
     match self.cur.kind:
       case '(': # fn decl
         params = self.collect_fn_params_decl()
-        block = self.expect_any((self.match_block, []), (self.match_token, [';'])).node
+        block = self.expect_any((self.match_block, [False]), (self.match_token, [';'])).node
 
         node = FnNode(decl_type, decl_name, params, block if isinstance(block, ContainerNode) else None)
 
@@ -312,27 +318,41 @@ class Parser(CompilerComponent):
       return Out(False)
 
     return Out(True, new_idx=new_idx, node=IfNode(nodes))
+  
+  def match_while_node(self):
+    old_idx = self.save_idx()
 
-  def match_term(self):
-    if (matched_type := self.match_type()).unwrap():
-      return self.match_typed_node(matched_type)
+    if not self.match_token('while').unwrap():
+      return Out(False)
+
+    pos = self.advance().pos
+    condition_expr = self.expect(self.match_parenthesized_expr).node
+    body = self.expect(self.match_block).node
+
+    return Out(True, new_idx=self.save_idx_and_update(old_idx), node=WhileNode(condition_expr, body, pos))
+
+  def match_term(self, is_statement):
+    if not (
+      (m := self.match_typed_node())         .unwrap() or \
+      (m := self.match_token('digit'))       .unwrap() or \
+      (m := self.match_token('id'))          .unwrap() or \
+      (m := self.match_if_node())            .unwrap() or \
+      (m := self.match_while_node())         .unwrap() or \
+      (m := self.match_parenthesized_expr()) .unwrap() or \
+      (m := self.match_unary_expr())         .unwrap()
+    ): return Out(False)
+
+    old_idx = self.save_idx_and_update(m.new_idx)
+
+    if is_statement:
+      if not isinstance(m.node, (ContainerNode, FnNode, IfNode, WhileNode)):
+        self.expect(self.match_token, ';')
+      
+      self.skip_all(self.match_token, ';')
+
+    m.new_idx = self.save_idx_and_update(old_idx)
     
-    if (matches_digit := self.match_token('digit')).unwrap():
-      return matches_digit
-    
-    if (matches_id := self.match_token('id')).unwrap():
-      return matches_id
-    
-    if (matches_if_node := self.match_if_node()).unwrap():
-      return matches_if_node
-    
-    if (matches_parenthesized_expr := self.match_parenthesized_expr()).unwrap():
-      return matches_parenthesized_expr
-    
-    if (matches_unary := self.match_unary_expr()).unwrap():
-      return matches_unary
-    
-    return Out(False)
+    return m
 
   def match_bin_or_term(self, members_matcher, ops):
     if not (matches_left := members_matcher()).unwrap():
@@ -349,21 +369,32 @@ class Parser(CompilerComponent):
 
     return Out(True, new_idx=self.save_idx_and_update(old_idx), node=left)
 
-  def match_expr(self):
+  def match_expr(self, is_statement=False):
     for plugin_matches_node in plugin_call('match_next_node', self.match_expr):
       if plugin_matches_node.unwrap():
         return plugin_matches_node
 
     return self.match_bin_or_term(
-      lambda: self.match_bin_or_term(self.match_term, ['*', '/']),
+      lambda: self.match_bin_or_term(lambda: self.match_term(is_statement), ['*', '/']),
       ['+', '-']
     )
+  
+  def skip(self, matcher, *args):
+    if not (matches := matcher(*args)).unwrap():
+      return
+    
+    self.update_idx(matches.new_idx)
+  
+  def skip_all(self, matcher, *args):
+    while (matches := matcher(*args)).unwrap():
+      self.update_idx(matches.new_idx)
 
   def gen(self):
     self.output = []
 
     while not self.eof():
       node = self.expect(self.match_expr).node
+      self.skip_all(self.match_token, ';')
 
       self.output.append(node)
 

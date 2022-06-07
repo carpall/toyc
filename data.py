@@ -31,7 +31,7 @@ class ContainerNode(Node):
     rewriter_indent += '  '
 
     for node in self.nodes:
-      r += f'\n{rewriter_indent}{node.rewrite()}'
+      r += f'\n{rewriter_indent}{node.rewrite()};'
     
     rewriter_indent = rewriter_indent[:-2]
     return r + f'\n{rewriter_indent}}}'
@@ -49,6 +49,13 @@ class UnaryNode(Node):
   
   def rewrite(self):
     return f'(({self.op.rewrite()}({self.expr.rewrite()}))'
+
+class WhileNode(Node):
+  def __init__(self, condition_expr, body, pos):
+    super().__init__(pos, condition_expr=condition_expr, body=body)
+  
+  def rewrite(self):
+    return f'while ({self.condition_expr.rewrite()}) {self.body.rewrite()}'
 
 class IfNode(Node):
   class ConditionCaseNode(Node):
