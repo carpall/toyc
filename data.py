@@ -13,6 +13,13 @@ class Node(Debug):
   def rewrite(self):
     raise NotImplementedError(f"{self.__class__.__name__} does not implement 'fmt'")
 
+class PtrTypeNode(Node):
+  def __init__(self, type, pos):
+    super().__init__(pos, type=type)
+  
+  def rewrite(self):
+    return f'*{self.type}'
+
 class IntTypeNode(Node):
   def __init__(self, kind, pos):
     super().__init__(pos, kind=kind)
@@ -79,7 +86,7 @@ class VarNode(Node):
     super().__init__(name.pos, type=type, name=name, expr=expr)
   
   def rewrite(self):
-    return f'{self.type.rewrite()} {self.name.rewrite()}{f" = {self.expr.rewrite()}" if self.expr is not None else ""};'
+    return f'{self.type.rewrite()} {self.name.rewrite()}{f" = {self.expr.rewrite()}" if self.expr is not None else ""}'
 
 class FnNode(Node):
   class ParamNode(Node):
@@ -99,7 +106,7 @@ class FnNode(Node):
     )
   
   def rewrite(self):
-    return f'{self.type.rewrite()} {self.id.rewrite()}({", ".join(self.params)}) {self.body.rewrite() if self.body is not None else ";"}'
+    return f'{self.type.rewrite()} {self.id.rewrite()}({", ".join(self.params)}) {self.body.rewrite() if self.body is not None else ""}'
 
 class BadNode(Node):
   def __init__(self, pos):

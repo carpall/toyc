@@ -22,8 +22,8 @@ class Parser(CompilerComponent):
       SourcePosition(
         self.src_info,
         self.last.pos.row,
-        self.last.pos.col + 1,
-        self.last.pos.len,
+        self.last.pos.col + self.last.pos.len,
+        1,
         None,
         None
       )
@@ -55,16 +55,21 @@ class Parser(CompilerComponent):
 
     return self.tokens[self.idx - count]
 
-  def get_expecting_error_msg(self, method, args):
+  def get_expecting_error_msg(self, method, args, get_just_token=False):
     match method.__name__:
       case 'match_token':
-        return f"expected '{args[0]}'"
+        token = f"'{args[0]}'"
       
       case '<lambda>':
-        return f'expected expr'
+        token = f"'expr'"
 
       case _:
-        return f"expected '{method.__name__.replace('match_', '')}'"
+        token = f"'{method.__name__.replace('match_', '')}'"
+    
+    if get_just_token:
+      return token
+    
+    return f'expect {token}'
 
   def expect(self, method, *args):
     if not (matches := method(*args)).unwrap():
@@ -84,7 +89,7 @@ class Parser(CompilerComponent):
         return matches
     
     self.report(
-      f"expected one of '{' '.join([self.get_expecting_error_msg(method, args) for method, args in methods_and_args])}'",
+      f"expected one of {', '.join([self.get_expecting_error_msg(method, args, get_just_token=True) for method, args in methods_and_args])}",
       self.cur.pos
     )
 
@@ -159,16 +164,22 @@ class Parser(CompilerComponent):
     pos = extend_pos(start_pos, self.bck.pos)
     new_idx = self.save_idx_and_update(old_idx)
 
-    return Out(True, new_idx=new_idx, type=IntTypeNode(self.convert_types_chain_to_single(types_chain, pos), pos))
+    return Out(True, new_idx=new_idx, node=IntTypeNode(self.convert_types_chain_to_single(types_chain, pos), pos))
 
   def match_type(self):
-    if (matches_int_type := self.match_int_type()).unwrap():
-      return matches_int_type
+    if not (matches_type := self.match_int_type()).unwrap():
+      return Out(False)
     
-    return Out(False)
+    old_idx = self.save_idx_and_update(matches_type.new_idx)
+    node = matches_type.node
+    
+    while not self.eof() and self.match_token('*').unwrap():
+      node = PtrTypeNode(node, extend_pos(node.pos, self.advance().pos))
+    
+    return Out(True, new_idx=self.save_idx_and_update(old_idx), node=node)
 
   def collect_fn_param_decl(self):
-    type = self.expect(self.match_type).type
+    type = self.expect(self.match_type).node
     id = self.expect(self.match_token, 'id').node
 
     return FnNode.ParamNode(id, type)
@@ -234,7 +245,7 @@ class Parser(CompilerComponent):
       return Out(False)
 
     old_idx = self.save_idx_and_update(matched_type.new_idx)
-    decl_type = matched_type.type
+    decl_type = matched_type.node
     decl_name = self.expect(self.match_token, 'id').node
     
     match self.cur.kind:
@@ -251,11 +262,10 @@ class Parser(CompilerComponent):
           self.advance()
           expr = self.expect(self.match_expr).node if self.bck.kind == '=' else None
 
-        self.expect(self.match_token, ';')
-
         node = VarNode(decl_type, decl_name, expr)
       
       case _:
+        self.update_idx(old_idx)
         return Out(False)
     
     return Out(True, new_idx=self.save_idx_and_update(old_idx), node=node)
@@ -331,6 +341,9 @@ class Parser(CompilerComponent):
 
     return Out(True, new_idx=self.save_idx_and_update(old_idx), node=WhileNode(condition_expr, body, pos))
 
+  def has_body(self, node):
+    return isinstance(node, (ContainerNode, FnNode, IfNode, WhileNode))
+
   def match_term(self, is_statement):
     if not (
       (m := self.match_typed_node())         .unwrap() or \
@@ -345,10 +358,7 @@ class Parser(CompilerComponent):
     old_idx = self.save_idx_and_update(m.new_idx)
 
     if is_statement:
-      if not isinstance(m.node, (ContainerNode, FnNode, IfNode, WhileNode)):
-        self.expect(self.match_token, ';')
-      
-      self.skip_all(self.match_token, ';')
+      self.skip_semicolon(expect_first=not self.has_body(m.node))
 
     m.new_idx = self.save_idx_and_update(old_idx)
     
@@ -388,13 +398,19 @@ class Parser(CompilerComponent):
   def skip_all(self, matcher, *args):
     while (matches := matcher(*args)).unwrap():
       self.update_idx(matches.new_idx)
+  
+  def skip_semicolon(self, expect_first):
+    if expect_first:
+      self.expect(self.match_token, ';')
+
+    self.skip_all(self.match_token, ';')
 
   def gen(self):
     self.output = []
 
     while not self.eof():
       node = self.expect(self.match_expr).node
-      self.skip_all(self.match_token, ';')
+      self.skip_semicolon(expect_first=not self.has_body(node))
 
       self.output.append(node)
 
