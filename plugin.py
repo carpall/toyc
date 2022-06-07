@@ -5,8 +5,16 @@ from os.path import isdir
 from types   import ModuleType
 from utils   import Out
 
+PLUGINS_PATHS     = []
 PLUGINS_CLASSES   = []
 PLUGINS_INSTANCES = []
+
+def with_tmp_sys_path(lmb, path):
+  sys.path.append(path)
+  x = lmb()
+  sys.path.remove(path)
+
+  return x
 
 def load_plugins(path):
   for member in listdir(path):
@@ -20,24 +28,26 @@ def load_plugins(path):
     module = ModuleType('setup')
     module.__file__ = plugin_setup_path
 
-    sys.path.append(member)
-    exec(open(plugin_setup_path).read(), module.__dict__)
-    sys.path.remove(member)
+    PLUGINS_PATHS.append(member)
+    with_tmp_sys_path(lambda: exec(open(plugin_setup_path).read(), module.__dict__), member)
 
-def init_plugins(**kwargs):
-  for plugin_class in PLUGINS_CLASSES:
-    PLUGINS_INSTANCES.append(plugin_class(**kwargs))
+def init_plugins(components_modules):
+  for plugin_path, plugin_class in zip(PLUGINS_PATHS, PLUGINS_CLASSES):
+    with_tmp_sys_path(
+      lambda: PLUGINS_INSTANCES.append(plugin_class(components_modules)),
+      plugin_path
+    )
 
 def plugin_call(impl_name, component, **kwargs):
-  for plugin in PLUGINS_INSTANCES:
-    yield getattr(plugin, impl_name)(component, **kwargs)
+  for plugin_path, plugin in zip(PLUGINS_PATHS, PLUGINS_INSTANCES):
+    yield with_tmp_sys_path(lambda: getattr(plugin, impl_name)(component, **kwargs), plugin_path)
 
 class PluginError(Exception):
   pass
 
 class Plugin:
-  def __init__(self, **kwargs):
-    self.__dict__ = kwargs
+  def __init__(self, components_modules):
+    self.__dict__ = components_modules
 
   def __init_subclass__(cls):
     PLUGINS_CLASSES.append(cls)
