@@ -32,6 +32,8 @@ DOUBLE_PUNCTUATION = [
 ]
 
 KEYWORDS = [
+  'if',
+  'else',
   'signed',
   'unsigned',
   'struct',

@@ -1,3 +1,4 @@
+from inspect import unwrap
 from turtle import right
 from compiler_utils import CompilerComponent, CompilerResult, SourcePosition
 from utils          import *
@@ -51,6 +52,8 @@ class Parser(CompilerComponent):
   
   def advance(self, count=1):
     self.idx += count
+
+    return self.tokens[self.idx - count]
 
   def get_expecting_error_msg(self, method, args):
     match method.__name__:
@@ -214,9 +217,8 @@ class Parser(CompilerComponent):
     
     end_pos = self.cur.pos
     self.expect(self.match_token, '}')
-    new_idx = self.save_idx_and_update(old_idx)
 
-    return Out(True, new_idx=new_idx, node=ContainerNode(nodes, extend_pos(start_pos, end_pos)))
+    return Out(True, new_idx=self.save_idx_and_update(old_idx), node=ContainerNode(nodes, extend_pos(start_pos, end_pos)))
 
   def save_idx_and_update(self, old_idx):
     new_idx = self.save_idx()
@@ -252,26 +254,64 @@ class Parser(CompilerComponent):
     
     return Out(True, new_idx=self.save_idx_and_update(old_idx), node=node)
 
-  def collect_parenthesized_expr(self):
+  def match_parenthesized_expr(self):
+    if not self.match_token('(').unwrap():
+      return Out(False)
+
+    old_idx = self.save_idx()
+    start_pos = self.advance().pos
+    expr = self.expect(self.match_expr).node
+    end_pos = self.expect(self.match_token, ')').node.pos
+
+    expr.pos = extend_pos(start_pos, end_pos)
+
+    return Out(True, new_idx=self.save_idx_and_update(old_idx), node=expr)
+
+  def match_unary_expr(self):
+    if not self.match_any_token(['+', '-']).unwrap():
+      return Out(False)
+
     old_idx = self.save_idx()
 
-    self.expect(self.match_token, '(')
+    op = self.advance()
     expr = self.expect(self.match_expr).node
-    self.expect(self.match_token, ')')
+
+    return Out(True, new_idx=self.save_idx_and_update(old_idx), node=UnaryNode(op, expr))
+
+  def match_if_node(self):
+    old_idx = self.save_idx()
+    nodes = []
+    
+    while not self.eof() and self.match_any_token(['if', 'else']).unwrap():
+      case = self.advance()
+
+      if case.kind == 'if' and len(nodes) > 0:
+        # this is another if statement, it has nothing to do with this
+        self.advance(-1)
+        break
+      
+      if case.kind == 'else':
+        if self.match_token('if').unwrap():
+          if_kw = self.advance()
+          case = Token('elif', 'else if', extend_pos(case.pos, if_kw.pos))
+        
+        if len(nodes) == 0:
+          self.report(f"expected 'if' before '{case.value}'", case.pos)
+      
+      if len(nodes) > 0 and nodes[-1].case.kind == 'else':
+        self.report(f"unexpected '{case.value}' after 'else'", case.pos)
+      
+      condition_expr = self.expect(self.match_parenthesized_expr).node if case.kind != 'else' else None
+      body = self.expect(self.match_block).node
+      
+      nodes.append(IfNode.ConditionCaseNode(case, condition_expr, body))
 
     new_idx = self.save_idx_and_update(old_idx)
 
-    return Out(True, new_idx=new_idx, node=expr)
+    if len(nodes) == 0:
+      return Out(False)
 
-  def collect_unary_expr(self):
-    old_idx = self.save_idx()
-
-    op = self.expect(self.match_any_token, ['+', '-']).node
-    expr = self.expect(self.match_expr).node
-
-    new_idx = self.save_idx_and_update(old_idx)
-
-    return Out(True, new_idx=new_idx, node=UnaryNode(op, expr))
+    return Out(True, new_idx=new_idx, node=IfNode(nodes))
 
   def match_term(self):
     if (matched_type := self.match_type()).unwrap():
@@ -283,11 +323,14 @@ class Parser(CompilerComponent):
     if (matches_id := self.match_token('id')).unwrap():
       return matches_id
     
-    if self.match_token('(').unwrap():
-      return self.collect_parenthesized_expr()
+    if (matches_if_node := self.match_if_node()).unwrap():
+      return matches_if_node
     
-    if self.match_any_token(['+', '-']).unwrap():
-      return self.collect_unary_expr()
+    if (matches_parenthesized_expr := self.match_parenthesized_expr()).unwrap():
+      return matches_parenthesized_expr
+    
+    if (matches_unary := self.match_unary_expr()).unwrap():
+      return matches_unary
     
     return Out(False)
 

@@ -50,6 +50,23 @@ class UnaryNode(Node):
   def rewrite(self):
     return f'(({self.op.rewrite()}({self.expr.rewrite()}))'
 
+class IfNode(Node):
+  class ConditionCaseNode(Node):
+    def __init__(self, case, condition_expr, body):
+      super().__init__(case.pos, case=case, condition_expr=condition_expr, body=body)
+  
+    def rewrite(self):
+      return \
+        f'{self.case.rewrite()} ({self.condition_expr.rewrite()}) {self.body.rewrite()}' \
+          if self.case.kind != 'else' else \
+            f'else {self.body.rewrite()}'
+  
+  def __init__(self, nodes):
+    super().__init__(nodes[0].pos, nodes=nodes)
+  
+  def rewrite(self):
+    return ' '.join(map(lambda node: node.rewrite(), self.nodes))
+
 class VarNode(Node):
   def __init__(self, type, name, expr):
     super().__init__(name.pos, type=type, name=name, expr=expr)
