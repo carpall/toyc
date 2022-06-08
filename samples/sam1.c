@@ -1,1 +1,8 @@
-int x = 10
+struct s {
+  int x;
+  int y;
+};
+
+main() {
+
+}

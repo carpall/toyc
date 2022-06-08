@@ -18,7 +18,7 @@ class PtrTypeNode(Node):
     super().__init__(pos, type=type)
   
   def rewrite(self):
-    return f'*{self.type}'
+    return f'{self.type.rewrite()}*'
 
 class IntTypeNode(Node):
   def __init__(self, kind, pos):
@@ -87,6 +87,13 @@ class VarNode(Node):
   
   def rewrite(self):
     return f'{self.type.rewrite()} {self.name.rewrite()}{f" = {self.expr.rewrite()}" if self.expr is not None else ""}'
+
+class StructNode(Node):
+  def __init__(self, name, body, pos):
+    super().__init__(pos, name=name, body=body)
+  
+  def rewrite(self):
+    return f'struct {self.name.rewrite()} {self.body.rewrite()}'
 
 class FnNode(Node):
   class ParamNode(Node):

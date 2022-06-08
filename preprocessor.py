@@ -211,7 +211,7 @@ class Preprocessor(CompilerComponent):
       self.report("the header is including it self", path_pos)
       return
 
-    lexer = Lexer(SourceInfo(path))
+    lexer = Lexer(SourceInfo(path, self.src_info.action, self.src_info.args))
     lexer_result = lexer.gen().print_errors_and()
     preprocessor = Preprocessor(lexer.src_info, lexer_result.result, self.symbols)
     preprocessor.output = self.output
@@ -259,14 +259,19 @@ class Preprocessor(CompilerComponent):
     self.idx += 1
 
     return args
+  
+  def report_invalid_directive(self, directive):
+    self.report("invalid directive", directive.pos)
+
+  def on_unknown_directive(self, directive):
+    self.report_invalid_directive()
 
   def expand_preprocessor_directive(self, directive):
     has_to_skip_until_endif = self.skip_tokens_until_endif
     conditions_count = self.conditions_count
-    report_invalid_directive = lambda: self.report('invalid directive', directive.pos)
 
     if directive.kind != 'id':
-      report_invalid_directive()
+      self.report_invalid_directive()
       return
 
     if directive.value == 'endif' and conditions_count == 0:
@@ -284,105 +289,124 @@ class Preprocessor(CompilerComponent):
 
       return
 
-    match directive.value:
-      case 'define':
-        token = self.advance_and_get_cur()
+    attr = f'preprocess_{directive.value}_directive'
 
-        if token.is_none or token.is_some_with(lambda t: t.kind != 'id'):
-          self.report("expected identifier after 'define' directive", token.unwrap_or(directive).pos)
+    if not hasattr(self, attr):
+      self.on_unknown_directive(directive)
+      return
+    
+    getattr(self, attr)(directive)
 
-        if (symbol_token := token.is_some_and()).unwrap():
-          symbol_token = symbol_token.value
-          cur_token = self.advance_and_get_cur()
+  def preprocess_pragma_directive(self, directive):
+    raise NotImplementedError('implement pragma directive')
 
-          # macro definition
-          macro_args_option = cur_token.is_some_and_then(
-            lambda token:
-              Option(self.collect_macro_args()) if token.kind == '(' and token.pos.spacing == 0 and not token.pos.is_on_new_line else Option(None)
-          )
-
-          # going back to the macro identifier token
-          self.idx -= 1
-
-          symbol_tokens = self.collect_tokens_until_newline()
-
-          self.define_symbol(
-            PreprocessorMacro(symbol_token.value, macro_args.value, symbol_tokens) \
-              if (macro_args := macro_args_option.is_some_and()).unwrap() else PreprocessorIdentifier(symbol_token.value, symbol_tokens)
-          )
-
-      case 'ifdef' | 'ifndef':
-        self.conditions_count += 1
-        
-        if (token_to_check := self.advance_and_get_cur().is_some_and()).unwrap():
-          token_to_check = token_to_check.value
-
-          is_defined = self.is_defined(token_to_check.value)
-          self.skip_tokens_until_endif = not is_defined if directive.value == 'ifdef' else is_defined
-        else:
-          self.report(f"expected identifier after '{directive.name}' directive", directive.pos)
-
-      case 'endif':
-        self.conditions_count -= 1
-
-      case 'undef':
-        if (symbol_to_undefine := self.advance_and_get_cur().is_some_and()).unwrap():
-          symbol_to_undefine = symbol_to_undefine.value
-
-          if symbol_to_undefine.kind != 'id':
-            self.report("expected identifier after 'undef'", symbol_to_undefine.pos)
-          else:
-            self.undefine_symbol(symbol_to_undefine.value)
-
-      case 'include':
-        current_token = self.advance_and_get_cur()
-        report_invalid_path_token = lambda pos: self.report("expected path as string token or between '<' '>' tokens", pos)
-
-        if not (path_token := current_token.is_some_and()).unwrap():
-          report_invalid_path_token(directive.pos)
-          return
-
-        path_token = path_token.value
-        report_invalid_path = lambda pos: self.report('invalid path', pos)
-
-        match path_token.kind:
-          case 'str':
-            base = Path(self.src_info.filename).parent.absolute()
-            filename = f'{base}/{path_token.value}'
-
-            if not file_exists(filename):
-              report_invalid_path(path_token.pos)
-            else:
-              self.include_file(filename, path_token.pos)
-
-          case '<':
-            base = f'{getcwd()}/std'
-            (relative_path, end_col_pos) = self.collect_standard_path_inside_include()
-            relative_path_pos = SourcePosition(
-              self.src_info,
-              path_token.pos.row,
-              path_token.pos.col,
-              end_col_pos - path_token.pos.col + 1,
-              path_token.pos.spacing,
-              path_token.pos.is_on_new_line
-            )
-
-            filename = abspath(f'{base}/{relative_path}')
-
-            if not file_exists(filename):
-              report_invalid_path(relative_path_pos)
-            else:
-              self.include_file(filename, relative_path_pos)
-          
-          case _:
-            report_invalid_path_token(path_token.pos)
+  def report_invalid_path_token(self, pos):
+    self.report("expected path as string token or between '<' '>' tokens", pos)
   
-      case 'pragma':
-        raise NotImplementedError('implement pragma directive')
+  def report_invalid_path(self, pos):
+    self.report('invalid path', pos)
 
+  def preprocess_include_directive(self, directive):
+    current_token = self.advance_and_get_cur()
+
+    if not (path_token := current_token.is_some_and()).unwrap():
+      self.report_invalid_path_token(directive.pos)
+      return
+
+    path_token = path_token.value
+
+    match path_token.kind:
+      case 'str':
+        self.include_local_path(directive, path_token)
+
+      case '<':
+        self.include_standard_path(directive, path_token)
+        
       case _:
-        if plugin_call('on_unknown_preprocessor_directive', self.expand_preprocessor_directive, directive=directive) != 'avoid_reporting':
-          report_invalid_directive()
+        self.include_invalid_pathtoken(directive, path_token)
+
+  def include_invalid_pathtoken(self, directive, path_token):
+    self.report_invalid_path_token(path_token.pos)
+
+  def include_standard_path(self, directive, path_token):
+    base = f'{getcwd()}/std'
+    (relative_path, end_col_pos) = self.collect_standard_path_inside_include()
+    relative_path_pos = SourcePosition(
+        self.src_info,
+        path_token.pos.row,
+        path_token.pos.col,
+        end_col_pos - path_token.pos.col + 1,
+        path_token.pos.spacing,
+        path_token.pos.is_on_new_line
+      )
+
+    filename = abspath(f'{base}/{relative_path}')
+
+    if not file_exists(filename):
+      self.report_invalid_path(relative_path_pos)
+    else:
+      self.include_file(filename, relative_path_pos)
+
+  def include_local_path(self, directive, path_token):
+    base = Path(self.src_info.filename).parent.absolute()
+    filename = f'{base}/{path_token.value}'
+
+    if not file_exists(filename):
+      self.report_invalid_path(path_token.pos)
+    else:
+      self.include_file(filename, path_token.pos)
+
+  def preprocess_undef_directive(self, directive):
+    if (symbol_to_undefine := self.advance_and_get_cur().is_some_and()).unwrap():
+      symbol_to_undefine = symbol_to_undefine.value
+
+      if symbol_to_undefine.kind != 'id':
+        self.report("expected identifier after 'undef'", symbol_to_undefine.pos)
+      else:
+        self.undefine_symbol(symbol_to_undefine.value)
+
+  def preprocess_endif_directive(self, directive):
+      self.conditions_count -= 1
+
+  def preprocess_ifndef_directive(self, directive):
+    self.preprocess_ifdef_directive(directive)
+
+  def preprocess_ifdef_directive(self, directive):
+    self.conditions_count += 1
+      
+    if (token_to_check := self.advance_and_get_cur().is_some_and()).unwrap():
+      token_to_check = token_to_check.value
+
+      is_defined = self.is_defined(token_to_check.value)
+      self.skip_tokens_until_endif = not is_defined if directive.value == 'ifdef' else is_defined
+    else:
+      self.report(f"expected identifier after '{directive.name}' directive", directive.pos)
+
+  def preprocess_define_directive(self, directive):
+    token = self.advance_and_get_cur()
+
+    if token.is_none or token.is_some_with(lambda t: t.kind != 'id'):
+      self.report("expected identifier after 'define' directive", token.unwrap_or(directive).pos)
+
+    if (symbol_token := token.is_some_and()).unwrap():
+      symbol_token = symbol_token.value
+      cur_token = self.advance_and_get_cur()
+
+      # macro definition
+      macro_args_option = cur_token.is_some_and_then(
+        lambda token:
+          Option(self.collect_macro_args()) if token.kind == '(' and token.pos.spacing == 0 and not token.pos.is_on_new_line else Option(None)
+      )
+
+      # going back to the macro identifier token
+      self.idx -= 1
+
+      symbol_tokens = self.collect_tokens_until_newline()
+
+      self.define_symbol(
+        PreprocessorMacro(symbol_token.value, macro_args.value, symbol_tokens) \
+          if (macro_args := macro_args_option.is_some_and()).unwrap() else PreprocessorIdentifier(symbol_token.value, symbol_tokens)
+      )
 
   def extend_token_or_write_current(self):
     token = self.cur

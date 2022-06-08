@@ -75,7 +75,7 @@ class Parser(CompilerComponent):
     if not (matches := method(*args)).unwrap():
       self.report(self.get_expecting_error_msg(method, args), self.cur.pos)
       self.update_idx(new_idx := self.idx + 1)
-      return Out(False, new_idx=new_idx, node=BadNode(self.cur))
+      return Out(False, new_idx=new_idx, node=BadNode(self.cur.pos))
 
       # return Out(False, new_idx=self.idx, node=BadNode(self.cur.pos))
     
@@ -167,9 +167,21 @@ class Parser(CompilerComponent):
     return Out(True, new_idx=new_idx, node=IntTypeNode(self.convert_types_chain_to_single(types_chain, pos), pos))
 
   def match_type(self):
-    if not (matches_type := self.match_int_type()).unwrap():
+    if not (
+      (matches_type := self.match_int_type())    .unwrap() or \
+      (matches_type := self.match_token('id'))   .unwrap() or \
+      (matches_type := self.match_struct_node()) .unwrap()
+    ): return Out(False)
+
+    # when the definition of a strutt is taken for the definition of a variable
+    # just check if there is a point and a comma then you want to define a strutt otherwise you want to define a variable
+    if isinstance(matches_type.node, StructNode) and self.match_on_idx(
+      matches_type.new_idx,
+      self.match_token,
+      ';'
+    ).unwrap():
       return Out(False)
-    
+
     old_idx = self.save_idx_and_update(matches_type.new_idx)
     node = matches_type.node
     
@@ -250,25 +262,34 @@ class Parser(CompilerComponent):
     
     match self.cur.kind:
       case '(': # fn decl
-        params = self.collect_fn_params_decl()
-        block = self.expect_any((self.match_block, [False]), (self.match_token, [';'])).node
-
-        node = FnNode(decl_type, decl_name, params, block if isinstance(block, ContainerNode) else None)
+        node = self.collect_typed_fn_node(decl_type, decl_name)
 
       case ';' | '=': # var decl
-        expr = None
-
-        if self.cur.kind == '=':
-          self.advance()
-          expr = self.expect(self.match_expr).node if self.bck.kind == '=' else None
-
-        node = VarNode(decl_type, decl_name, expr)
+        node = self.collect_typed_var_node(decl_type, decl_name)
       
       case _:
-        self.update_idx(old_idx)
-        return Out(False)
+        return self.match_typed_unknown_node(old_idx, decl_type, decl_name)
     
     return Out(True, new_idx=self.save_idx_and_update(old_idx), node=node)
+
+  def match_typed_unknown_node(self, old_idx, decl_type, decl_name):
+    self.update_idx(old_idx)
+    return Out(False)
+
+  def collect_typed_var_node(self, decl_type, decl_name):
+    expr = None
+
+    if self.cur.kind == '=':
+      self.advance()
+      expr = self.expect(self.match_expr).node if self.bck.kind == '=' else None
+
+    return VarNode(decl_type, decl_name, expr)
+
+  def collect_typed_fn_node(self, decl_type, decl_name):
+    params = self.collect_fn_params_decl()
+    block = self.expect_any((self.match_block, [False]), (self.match_token, [';'])).node
+
+    return FnNode(decl_type, decl_name, params, block if isinstance(block, ContainerNode) else None)
 
   def match_parenthesized_expr(self):
     if not self.match_token('(').unwrap():
@@ -329,6 +350,11 @@ class Parser(CompilerComponent):
 
     return Out(True, new_idx=new_idx, node=IfNode(nodes))
   
+  def eat(self, matcher, *args):
+    if (matches := matcher(*args)).unwrap():
+      self.update_idx(matches.new_idx)
+      return matches.node
+
   def match_while_node(self):
     old_idx = self.save_idx()
 
@@ -344,6 +370,17 @@ class Parser(CompilerComponent):
   def has_body(self, node):
     return isinstance(node, (ContainerNode, FnNode, IfNode, WhileNode))
 
+  def match_struct_node(self):
+    if not self.match_token('struct').unwrap():
+      return Out(False)
+    
+    old_idx = self.save_idx()
+    pos = self.advance().pos
+    name = self.eat(self.match_token, 'id')
+    body = self.expect(self.match_block).node
+
+    return Out(True, new_idx=self.save_idx_and_update(old_idx), node=StructNode(name, body, pos))
+
   def match_term(self, is_statement):
     if not (
       (m := self.match_typed_node())         .unwrap() or \
@@ -352,7 +389,8 @@ class Parser(CompilerComponent):
       (m := self.match_if_node())            .unwrap() or \
       (m := self.match_while_node())         .unwrap() or \
       (m := self.match_parenthesized_expr()) .unwrap() or \
-      (m := self.match_unary_expr())         .unwrap()
+      (m := self.match_unary_expr())         .unwrap() or
+      (m := self.match_struct_node())        .unwrap()
     ): return Out(False)
 
     old_idx = self.save_idx_and_update(m.new_idx)

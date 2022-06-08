@@ -7,7 +7,6 @@ load_plugins('plugins')
 init_plugins(COMPONENTS_MODULES)
 
 compiler = Compiler(argv[1:], COMPONENTS_MODULES)
-result = compiler.parse_args()
+result   = compiler.parse_args()
 
-if result is not None:
-  print(result.rewrite())
+print(call_when_not_none(lambda o: o.rewrite(), result))

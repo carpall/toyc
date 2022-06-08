@@ -58,6 +58,10 @@ class Debug:
   def __getstate__(self):
     return { k: v for k, v in self.__dict__.items() if k not in self.to_ignore }
 
+def call_when_not_none(fn, obj):
+  if obj is not None:
+    return fn(obj)
+
 def todo():
   raise NotImplementedError('todo')
 
