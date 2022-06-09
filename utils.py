@@ -1,4 +1,5 @@
-from types import LambdaType
+from types      import LambdaType
+from jsonpickle import encode
 
 class Option:
   def __init__(self, value):
@@ -49,6 +50,9 @@ class Out(Option):
   
   def unwrap(self):
     return self.ret
+
+def json(obj):
+  return encode(obj, unpicklable=False, make_refs=False, indent=2)
 
 def call_when_not_none(fn, obj):
   if obj is not None:

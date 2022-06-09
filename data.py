@@ -1,19 +1,6 @@
 class Node:
   def __init__(self, kind):
     self.kind = kind
-  
-  def __str__(self):
-    return repr(self)
-
-  def __repr__(self):
-    c = self.__dict__.copy()
-
-    try:
-      c.pop('pos')
-    except KeyError:
-      pass
-
-    return repr(c)
 
 class Token(Node):
   def __init__(self, kind, value, pos):
@@ -21,6 +8,12 @@ class Token(Node):
 
     self.value = value
     self.pos = pos
+  
+  def __getstate__(self):
+    c = self.__dict__.copy()
+    c['pos'] = '..'
+
+    return c
 
 class PreprocessorSymbol:
   def __init__(self, name, value):

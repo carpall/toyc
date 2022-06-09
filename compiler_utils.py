@@ -36,7 +36,7 @@ class SourcePosition:
     self.is_on_new_line = is_on_new_line
   
   def __repr__(self):
-    return f'{self.__class__.__name__} {vars(self)}'
+    return '..'
 
 class CompilerError:
   def __init__(self, msg, pos):
