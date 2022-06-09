@@ -24,10 +24,11 @@ class one_of(macro_dbg):
     self.one_of_them_to_match = one_of_them_to_match
 
 class undefined_seq(macro_dbg):
-  def __init__(self, to_match, sep=None, allow_trailing_seps=False, require_sep_at_edges=False, min=None, max=None):
+  def __init__(self, to_match, sep=None, allow_trailing_seps=False, insert_seps=False, require_sep_at_edges=False, min=None, max=None):
     self.to_match = to_match
     self.sep = sep
     self.allow_trailing_seps = allow_trailing_seps
+    self.insert_seps = insert_seps
     self.require_sep_at_edges = require_sep_at_edges
     self.min = min
     self.max = max
@@ -72,7 +73,7 @@ PATTERNS = [
   ),
 
   pattern('expr',
-    as_field('_', one_of('term', 'bin', 'un')),
+    as_field('_', 'bin'),
     take_just=get_field('_')
   ),
 
@@ -85,8 +86,17 @@ PATTERNS = [
     take_just=get_field('_')
   ),
 
+  pattern('bin',
+    as_field('_',
+      undefined_seq(
+        undefined_seq('term', sep=one_of('*', '/'), insert_seps=True, min=1),
+      sep=one_of('+', '-'), insert_seps=True, min=1)
+    ),
+    take_just=get_field('_')
+  ),
+
   pattern('term',
-    as_field('_', one_of('id', 'digit', 'par')),
+    as_field('_', one_of('par', 'un', 'id', 'digit')),
     take_just=get_field('_')
   ),
 
@@ -149,9 +159,12 @@ class Parser(CompilerComponent):
       has_to_require_sep = len(nodes) > 0 and pattern_to_match.sep is not None
 
       if has_to_require_sep:
-        if not self.match_pattern(pattern_to_match.sep).unwrap():
+        if not (sep_matches := self.match_pattern(pattern_to_match.sep)).unwrap():
           has_to_require_sep = False
           break
+        
+        if pattern_to_match.insert_seps:
+          nodes.append(sep_matches.node)
 
       if not (matches := self.match_pattern(pattern_to_match.to_match)).unwrap():
         if has_to_require_sep and not pattern_to_match.allow_trailing_seps and not pattern_to_match.require_sep_at_edges:
@@ -201,12 +214,12 @@ class Parser(CompilerComponent):
     raise Exception(f'no such field: {pattern_to_match.name}')
 
   def process_as_field_macro(self, pattern_to_match):
-    r = Out((matches := self.match_pattern(pattern_to_match.to_match)).unwrap())
+    r = self.match_pattern(pattern_to_match.to_match)
 
     if pattern_to_match.name == 'kind':
       raise Exception(f'invalid name in: {pattern_to_match}')
 
-    setattr(self.node, pattern_to_match.name, matches.node)
+    setattr(self.node, pattern_to_match.name, r.node)
 
     return r
   
@@ -217,7 +230,7 @@ class Parser(CompilerComponent):
 
       if has_pattern.pattern.take_just is not None:
         self.nodes_in_progress.append(m.node)
-        m = self.process_get_field_macro(has_pattern.pattern.take_just)
+        m = self.match_pattern(has_pattern.pattern.take_just)
         self.nodes_in_progress.pop()
 
       return m
