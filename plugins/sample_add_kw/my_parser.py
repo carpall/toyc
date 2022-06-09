@@ -1,5 +1,4 @@
 from compiler_utils import CompilerComponent, CompilerResult, SourcePosition
-from data           import BadNode
 
 class Parser(CompilerComponent):
   def __init__(self, src_info, tokens):

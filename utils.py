@@ -1,5 +1,4 @@
 from types import LambdaType
-from json  import dumps
 
 class Option:
   def __init__(self, value):
@@ -50,13 +49,6 @@ class Out(Option):
   
   def unwrap(self):
     return self.ret
-
-class Debug:
-  def __init__(self, to_ignore):
-    self.to_ignore = to_ignore + ['to_ignore']
-  
-  def __getstate__(self):
-    return { k: v for k, v in self.__dict__.items() if k not in self.to_ignore }
 
 def call_when_not_none(fn, obj):
   if obj is not None:

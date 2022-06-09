@@ -1,6 +1,5 @@
 from plugin         import Plugin
 from compiler_utils import CompilerComponent, Out, SourcePosition
-from data           import BadNode, Token
 
 class MyPlugin(Plugin):
   def __init__(self, components_modules):

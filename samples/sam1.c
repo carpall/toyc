@@ -1,8 +1,1 @@
-struct s {
-  int x;
-  int y;
-};
-
-main() {
-
-}
+int x, y, z;
