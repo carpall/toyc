@@ -50,6 +50,15 @@ class get_field(macro_dbg):
   def __init__(self, name):
     self.name = name
 
+class mark_as(macro_dbg):
+  def __init__(self, to_match, name):
+    self.to_match = to_match
+    self.name = name
+
+class optional(macro_dbg):
+  def __init__(self, to_match):
+    self.to_match = to_match
+
 class pattern(macro_dbg):
   def __init__(self, kind, *to_match, take_just=None):
     self.kind = kind
@@ -101,13 +110,18 @@ PATTERNS = [
   ),
 
   pattern('type',
-    as_field('_', one_of('builtin', 'id')), as_field('ptr_level', undefined_seq_counter('*')),
-    take_just=get_field('_')
+    as_field('name', one_of('builtin', 'id')), as_field('ptr_level', undefined_seq_counter('*')),
   ),
 
   pattern('builtin',
-    as_field('_', one_of('char', 'short', 'int', 'long')),
-    take_just=get_field('_')
+    as_field('is_unsigned',
+      match_but_get(
+        optional(one_of('signed', 'unsigned')), lambda parser, matched: matched.node.value == 'unsigned' if matched.node is not None else False
+      )
+    ),
+    as_field('builtint_type', undefined_seq(one_of(
+      'char', 'short', 'int', 'long',
+    ), min=1)),
   ),
 ]
 
@@ -212,6 +226,17 @@ class Parser(CompilerComponent):
         return Out(True, node=getattr(node, pattern_to_match.name))
     
     raise Exception(f'no such field: {pattern_to_match.name}')
+
+  def process_mark_as_macro(self, pattern_to_match):
+    if not (m := self.match_pattern(pattern_to_match.to_match)).unwrap():
+      return OUT_FALSE
+    
+    m.node.kind = pattern_to_match.name
+
+    return Out(True, node=m.node)
+  
+  def process_optional_macro(self, pattern_to_match):
+    return Out(True, node=self.match_pattern(pattern_to_match.to_match).node)
 
   def process_as_field_macro(self, pattern_to_match):
     r = self.match_pattern(pattern_to_match.to_match)
