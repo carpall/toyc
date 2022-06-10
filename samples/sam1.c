@@ -1,1 +1,3 @@
-long long int x = 2;
+int x(long y, long z) {
+    int k;
+}

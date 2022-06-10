@@ -12,7 +12,7 @@ class as_field(macro_dbg):
   def __init__(self, name, to_match, store_also_when_dont_match=True):
     self.name = name
     self.to_match = to_match
-    self.store_also_when_dont_match = True
+    self.store_also_when_dont_match = store_also_when_dont_match
 
 def field(to_match):
   if not isinstance(to_match, str):
@@ -77,6 +77,34 @@ PATTERNS = [
       as_field('body', match_but_get(';', lambda parser, matched: None)),
       inline_pattern('=', as_field('body', 'expr'), ';')
     )
+  ),
+
+  pattern('fn',
+    field('type'), field('id'),
+    '(',
+      as_field('params',
+        undefined_seq(pattern('param', field('type'), field('id')), sep=',')
+      ),
+    ')',
+    as_field('body', one_of(
+      match_but_get(';', lambda parser, matched: None),
+      'block'
+    ))
+  ),
+
+  pattern('block',
+    '{',
+      as_field('_', undefined_seq('statement')),
+    '}',
+    take_just=get_field('_')
+  ),
+
+  pattern('statement',
+    as_field('_', one_of(
+      'var',
+      inline_pattern('expr', ';'),
+    )),
+    take_just=get_field('_')
   ),
 
   pattern('expr',
@@ -353,13 +381,9 @@ class Parser(CompilerComponent):
   #   return matched_nodes[0][0]
 
   def parse_node(self):
-    starting_idx = self.idx
-
     for pattern in PATTERNS:
       if (matches := self.match_pattern(pattern)).unwrap():
         return matches.node
-      
-      self.idx = starting_idx
       
     self.advance()
     self.report('unexpected token here', self.cur.pos)
