@@ -9,9 +9,10 @@ class macro_dbg:
     return f'{type(self).__name__}({self.__dict__})'
 
 class as_field(macro_dbg):
-  def __init__(self, name, to_match):
+  def __init__(self, name, to_match, store_also_when_dont_match=True):
     self.name = name
     self.to_match = to_match
+    self.store_also_when_dont_match = True
 
 def field(to_match):
   if not isinstance(to_match, str):
@@ -59,6 +60,10 @@ class optional(macro_dbg):
   def __init__(self, to_match):
     self.to_match = to_match
 
+class inline_pattern(macro_dbg):
+  def __init__(self, *to_match):
+    self.to_match = to_match
+
 class pattern(macro_dbg):
   def __init__(self, kind, *to_match, take_just=None):
     self.kind = kind
@@ -68,60 +73,55 @@ class pattern(macro_dbg):
 PATTERNS = [
   pattern('var',
     field('type'), field('id'),
-    as_field('body',
-      one_of(
-        match_but_get(';', lambda parser, matched: None),
-        'var_assign_rpart'
-      )
+    one_of(
+      as_field('body', match_but_get(';', lambda parser, matched: None)),
+      inline_pattern('=', as_field('body', 'expr'), ';')
     )
   ),
 
-  pattern('var_assign_rpart',
-    '=', as_field('_', 'expr'), ';',
-    take_just=get_field('_')
-  ),
-
   pattern('expr',
-    as_field('_', 'bin'),
-    take_just=get_field('_')
+    as_field('nodes',
+      undefined_seq(
+        undefined_seq('term', sep=one_of('*', '/'), insert_seps=True, min=1),
+      sep=one_of('+', '-'), insert_seps=True, min=1)
+    )
   ),
 
   pattern('un',
     as_field('op', undefined_seq(one_of('+', '-', '*', '&'), min=1)), as_field('expr', 'term'),
   ),
 
-  pattern('par',
-    '(', as_field('_', 'expr'), ')',
-    take_just=get_field('_')
-  ),
-
-  pattern('bin',
-    as_field('_',
-      undefined_seq(
-        undefined_seq('term', sep=one_of('*', '/'), insert_seps=True, min=1),
-      sep=one_of('+', '-'), insert_seps=True, min=1)
-    ),
-    take_just=get_field('_')
-  ),
-
   pattern('term',
-    as_field('_', one_of('par', 'un', 'id', 'digit')),
+    as_field('_', one_of(inline_pattern('(', field('expr'), ')'), 'un', 'id', 'digit')),
     take_just=get_field('_')
   ),
 
   pattern('type',
-    as_field('name', one_of('builtin', 'id')), as_field('ptr_level', undefined_seq_counter('*')),
-  ),
+    one_of(
+      inline_pattern(
 
-  pattern('builtin',
-    as_field('is_unsigned',
-      match_but_get(
-        optional(one_of('signed', 'unsigned')), lambda parser, matched: matched.node.value == 'unsigned' if matched.node is not None else False
-      )
-    ),
-    as_field('builtint_type', undefined_seq(one_of(
-      'char', 'short', 'int', 'long',
-    ), min=1)),
+        as_field('is_unsigned',
+          match_but_get(
+            optional(one_of('signed', 'unsigned')), lambda parser, matched: matched.node.value == 'unsigned' if matched.node is not None else False
+          )
+        ),
+
+        as_field('builtint_type', one_of(
+          pattern('i8', 'char'),
+          pattern('i16', 'short'),
+          pattern('i16', one_of(inline_pattern('short', 'int'), 'short')),
+          pattern('f32', 'float'),
+
+          pattern('f64', one_of(inline_pattern('long', 'double'), 'double')),
+
+          pattern('i32', one_of(inline_pattern('long', 'int'), 'int')),
+
+          pattern('i64', one_of(inline_pattern('long', 'long', 'int'), inline_pattern('long', 'long'), 'long')),
+        ))
+
+      ),
+    as_field('name', 'id', store_also_when_dont_match=False)),
+    as_field('ptr_level', undefined_seq_counter('*')),
   ),
 ]
 
@@ -244,10 +244,25 @@ class Parser(CompilerComponent):
     if pattern_to_match.name == 'kind':
       raise Exception(f'invalid name in: {pattern_to_match}')
 
-    setattr(self.node, pattern_to_match.name, r.node)
+    if pattern_to_match.store_also_when_dont_match or r.unwrap():
+      setattr(self.node, pattern_to_match.name, r.node)
 
     return r
   
+  def process_inline_pattern_macro(self, pattern_to_match):
+    starting_idx = self.idx
+    r = Out(True, node=None)
+
+    for step in pattern_to_match.to_match:
+      if not self.match_pattern(step).unwrap():
+        r = OUT_FALSE
+        break
+    
+    if not r.unwrap():
+      self.idx = starting_idx
+    
+    return r
+
   def process_str_macro(self, pattern_to_match):
     if (has_pattern := self.has_pattern_for(pattern_to_match)).unwrap():
       if not (m := self.match_pattern(has_pattern.pattern)).unwrap():
@@ -267,17 +282,22 @@ class Parser(CompilerComponent):
     return Out(True, node=self.bck)
 
   def process_pattern_macro(self, pattern_to_match):
+    starting_idx = self.idx
+    r = True
     self.nodes_in_progress.append(Node(pattern_to_match.kind))
 
     for step in pattern_to_match.to_match:
       if not self.match_pattern(step).unwrap():
-        self.nodes_in_progress.pop()
-        return OUT_FALSE
+        r = False
+        break
 
       # if hasattr(matches, 'field_name') and matches.field_name is not None:
       #   setattr(node, matches.field_name, matches.field_value)
     
-    return Out(True, node=self.nodes_in_progress.pop())
+    if not r:
+      self.idx = starting_idx
+    
+    return Out(r, node=self.nodes_in_progress.pop())
 
   def process_undefined_seq_counter_macro(self, pattern_to_match):
     if (undefined_seq := self.process_undefined_seq_macro(pattern_to_match)):

@@ -44,7 +44,8 @@ KEYWORDS = [
   'short',
   'int',
   'long',
-  'unsigned',
+  'float',
+  'double',
   'return',
 ]
 
