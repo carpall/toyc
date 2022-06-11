@@ -102,15 +102,15 @@ PATTERNS = [
       'while_',
       'return_',
       'assign',
-      take_from(pattern(None, as_field('_', 'continue'), ';'), '_'),
-      take_from(pattern(None, as_field('_', 'break'), ';'), '_'),
-      take_from(pattern(None, as_field('_', 'expr'), ';'), '_'),
+      take_from(pattern(None, as_field('_', one_of(
+        'continue', 'break', 'expr'
+      )), ';'), '_'),
     )),
     take_just=get_field('_')
   ),
 
   pattern('return_',
-    'return', as_field('body', optional('expr')), ';'
+    'return', as_field('expr', optional('expr')), ';'
   ),
 
   pattern('while_',
@@ -134,7 +134,7 @@ PATTERNS = [
   ),
 
   pattern('assign',
-    as_field('lvalue', 'expr'), '=', as_field('body', 'expr'), ';'
+    as_field('lvalue', 'expr'), '=', as_field('rvalue', 'expr'), ';'
   ),
 
   pattern('expr',
@@ -274,22 +274,9 @@ class Parser(CompilerComponent):
     return Out(True, node=nodes)
   
   def process_one_of_macro(self, pattern_to_match):
-    # matched_nodes = []
-
     for to_match in pattern_to_match.one_of_them_to_match:
       if (matches := self.match_pattern(to_match)).unwrap():
-        # matched_nodes.append(matches.node)
         return Out(True, node=matches.node)
-    
-    # match len(matched_nodes):
-    #   case 0:
-    #     pass
-    #   
-    #   case 1:
-    #     return Out(True, node=matched_nodes[0])
-    #   
-    #   case _:
-    #     raise Exception(f'ambiguous syntax in: {pattern_to_match}')
     
     return OUT_FALSE
 
@@ -402,33 +389,6 @@ class Parser(CompilerComponent):
       raise Exception(f"unexpected pattern type '{type(pattern_to_match)}'")
 
     return getattr(self, attr)(pattern_to_match)
-
-  # def try_parse_node(self):
-  #   matched_nodes = []
-  #   starting_idx = self.idx
-  # 
-  #   for pattern in PATTERNS:
-  #     if (matches := self.match_pattern(pattern)).unwrap() and pattern.can_be_matched_alone:
-  #       matched_nodes.append((matches.node, self.idx))
-  #     
-  #     self.idx = starting_idx
-  #   
-  #   return Out(len(matched_nodes) == 1, matched_nodes=matched_nodes)
-
-  # def parse_node(self):
-  #   match len(matched_nodes := self.try_parse_node().matched_nodes):
-  #     case 0:
-  #       self.report('invalid syntax', self.cur.pos)
-  #       matched_nodes.append((Node('bad'), self.idx + 1))
-  # 
-  #     case 1:
-  #       pass
-  #     
-  #     case _:
-  #       self.report('ambiguous syntax', self.cur.pos)
-  #   
-  #   self.idx = matched_nodes[0][1]
-  #   return matched_nodes[0][0]
 
   def parse_node(self):
     for pattern in PATTERNS:

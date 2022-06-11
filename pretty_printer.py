@@ -1,4 +1,4 @@
-from xlexer import Token
+from data import Node, Token
 
 class PrettyAstFmt:
   def __init__(self, ast):
@@ -9,8 +9,29 @@ class PrettyAstFmt:
   def indent(self):
     return '  ' * self.indent_level
 
+  def node_needs_semicolon(self, node):
+    return not hasattr(node, 'body')
+
   def fmt_str(self, str):
     return str
+  
+  def fmt_continue(self, _):
+    return f'continue'
+
+  def fmt_break(self, _):
+    return f'break'
+  
+  def fmt_assign(self, assign):
+    lvalue = self.fmt_node(assign.lvalue)
+    rvalue = self.fmt_node(assign.rvalue)
+
+    return f'{lvalue} = {rvalue}'
+  
+  def fmt_while_(self, while_):
+    expr = self.fmt_node(while_.expr)
+    body = self.fmt_node(while_.body)
+
+    return f'while ({expr}) {body}'
   
   def fmt_if_(self, if_):
     def fmt_elseif_node(node):
@@ -33,7 +54,7 @@ class PrettyAstFmt:
     type       = self.fmt_node(var.type)
     ids_values = ', '.join(map(fmt_id_value, var.ids_values))
 
-    return f'{type} {ids_values};'
+    return f'{type} {ids_values}'
 
   def fmt_par(self, par):
     expr = self.fmt_node(par.expr)
@@ -75,19 +96,21 @@ class PrettyAstFmt:
     return f'{nodes}{inline_if}'
 
   def fmt_return_(self, return_):
-    body = self.fmt_node(return_.body) if return_.body is not None else ''
+    expr = f' {self.fmt_node(return_.expr)}' if return_.expr is not None else ''
 
-    return f'return{" " * int(body != "")}{body};'
+    return f'return{expr}'
 
   def fmt_block(self, block):
+    semicolon_when_needed = lambda statement: ';' if self.node_needs_semicolon(statement) else ''
+
     if hasattr(block, 'statement'):
-      return f'\n{self.indent}  ' + self.fmt_node(block.statement)
+      return f'\n{self.indent}  ' + self.fmt_node(block.statement) + semicolon_when_needed(block.statement)
     
     s = '{'
     self.indent_level += 1
 
     for statement in block.statements:
-      s += '\n' + self.indent + self.fmt_node(statement)
+      s += '\n' + self.indent + self.fmt_node(statement) + semicolon_when_needed(statement)
     
     self.indent_level -= 1
     s += f'\n{self.indent}}}'
@@ -113,7 +136,7 @@ class PrettyAstFmt:
     return f'{type} {id}({params}) {body}'
 
   def fmt_node(self, node):
-    attr = f'fmt_{node.kind}' if hasattr(node, 'kind') else f'fmt_{type(node).__name__}'
+    attr = f'fmt_{node.kind}' if isinstance(node, Node) else f'fmt_{type(node).__name__}'
 
     if not hasattr(self, attr):
       raise Exception(f"unknown node kind: '{node.kind}'")
