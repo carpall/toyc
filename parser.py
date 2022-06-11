@@ -102,9 +102,27 @@ PATTERNS = [
   pattern('statement',
     as_field('_', one_of(
       'var',
+      'ifcond',
+      'block',
       inline_pattern('expr', ';'),
     )),
     take_just=get_field('_')
+  ),
+
+  pattern('ifcond',
+    'if', '(', field('expr'), ')', as_field('body', 'block'),
+
+    as_field('elseif_nodes', undefined_seq(
+      pattern('elseif_node',
+        inline_pattern('else', 'if'), '(', field('expr'), ')', as_field('body', 'block')
+      )
+    )),
+
+    as_field('else_node',
+      optional(
+        take_from(pattern(None, 'else', as_field('body', 'block')), 'body')
+      )
+    )
   ),
 
   pattern('expr',
@@ -134,21 +152,25 @@ PATTERNS = [
           )
         ),
 
-        as_field('builtint_type', one_of(
-          pattern('i8', 'char'),
-          pattern('i16', 'short'),
-          pattern('i16', one_of(inline_pattern('short', 'int'), 'short')),
-          pattern('f32', 'float'),
+        as_field('name', take_from(one_of(
+            pattern('i8', 'char'),
+            pattern('i16', 'short'),
+            pattern('i16', one_of(inline_pattern('short', 'int'), 'short')),
+            pattern('f32', 'float'),
 
-          pattern('f64', one_of(inline_pattern('long', 'double'), 'double')),
+            pattern('f64', one_of(inline_pattern('long', 'double'), 'double')),
 
-          pattern('i32', one_of(inline_pattern('long', 'int'), 'int')),
+            pattern('i32', one_of(inline_pattern('long', 'int'), 'int')),
 
-          pattern('i64', one_of(inline_pattern('long', 'long', 'int'), inline_pattern('long', 'long'), 'long')),
-        ))
-
+            pattern('i64', one_of(inline_pattern('long', 'long', 'int'), inline_pattern('long', 'long'), 'long')),
+          ), 'kind'),
+          store_also_when_dont_match=False
+        )
       ),
-    as_field('name', 'id', store_also_when_dont_match=False)),
+
+      as_field('name', 'id', store_also_when_dont_match=False)
+    ),
+
     as_field('ptr_level', undefined_seq_counter('*')),
   ),
 ]
