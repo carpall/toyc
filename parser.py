@@ -71,21 +71,13 @@ class pattern(macro_dbg):
     self.take_just = take_just
 
 PATTERNS = [
-  # pattern('var',
-  #   field('type'), field('id'),
-  #   one_of(
-  #     as_field('body', match_but_get(';', lambda parser, matched: None)),
-  #     inline_pattern('=', as_field('body', 'expr'), ';')
-  #   )
-  # ),
-  
   pattern('var',
     field('type'), as_field('ids_values',
       undefined_seq(
         pattern('id_value', field('id'), as_field('value',
           optional(take_from(pattern(None, '=', field('expr')), 'expr'))
         )),
-      sep=',')
+      sep=',', min=1)
     ),
     ';'
   ),
@@ -103,20 +95,13 @@ PATTERNS = [
     ))
   ),
 
-  pattern('block',
-    '{',
-      as_field('_', undefined_seq('statement')),
-    '}',
-    take_just=get_field('_')
-  ),
-
   pattern('statement',
     as_field('_', one_of(
       'var',
       'if_',
       'while_',
-      'block',
       'return_',
+      'assign',
       take_from(pattern(None, as_field('_', 'continue'), ';'), '_'),
       take_from(pattern(None, as_field('_', 'break'), ';'), '_'),
       take_from(pattern(None, as_field('_', 'expr'), ';'), '_'),
@@ -148,6 +133,10 @@ PATTERNS = [
     )
   ),
 
+  pattern('assign',
+    as_field('lvalue', 'expr'), '=', as_field('body', 'expr'), ';'
+  ),
+
   pattern('expr',
     as_field('nodes',
       undefined_seq(
@@ -165,8 +154,17 @@ PATTERNS = [
   ),
 
   pattern('term',
-    as_field('_', one_of(inline_pattern('(', field('expr'), ')'), 'un', 'id', 'digit')),
-    take_just=get_field('_')
+    as_field('node', one_of('call', pattern('par', '(', field('expr'), ')'), 'un', 'id', 'digit')),
+    as_field('call_node',
+      optional(pattern('call', '(', as_field('args', undefined_seq('expr', sep=',')), ')'))
+    )
+  ),
+
+  pattern('block',
+    one_of(
+      inline_pattern('{', as_field('statements', undefined_seq('statement')), '}'),
+      field('statement')
+    ),
   ),
 
   pattern('type',
@@ -180,16 +178,16 @@ PATTERNS = [
         ),
 
         as_field('name', take_from(one_of(
-            pattern('i8', 'char'),
-            pattern('i16', 'short'),
-            pattern('i16', one_of(inline_pattern('short', 'int'), 'short')),
-            pattern('f32', 'float'),
+            pattern('void', 'void'),
+            pattern('char', 'char'),
+            pattern('short', one_of(inline_pattern('short', 'int'), 'short')),
+            pattern('float', 'float'),
 
-            pattern('f64', one_of(inline_pattern('long', 'double'), 'double')),
+            pattern('double', one_of(inline_pattern('long', 'double'), 'double')),
 
-            pattern('i32', one_of(inline_pattern('long', 'int'), 'int')),
+            pattern('int', one_of(inline_pattern('long', 'int'), 'int')),
 
-            pattern('i64', one_of(inline_pattern('long', 'long', 'int'), inline_pattern('long', 'long'), 'long')),
+            pattern('long', one_of(inline_pattern('long', 'long', 'int'), inline_pattern('long', 'long'), 'long')),
           ), 'kind'),
           store_also_when_dont_match=False
         )

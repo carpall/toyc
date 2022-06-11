@@ -1,1 +1,12 @@
-int a = 10, b, c = 3;
+#define true  1
+#define false 0
+
+int main() {
+    if (true) {
+        return 10;
+    } else if (false) {
+        return 20;
+    } else {
+        
+    }
+}

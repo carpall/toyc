@@ -42,6 +42,7 @@ KEYWORDS = [
   'signed',
   'unsigned',
   'struct',
+  'void',
   'char',
   'short',
   'int',
