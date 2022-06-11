@@ -102,14 +102,26 @@ PATTERNS = [
   pattern('statement',
     as_field('_', one_of(
       'var',
-      'ifcond',
+      'if_',
+      'while_',
       'block',
-      inline_pattern('expr', ';'),
+      'return_',
+      take_from(pattern(None, as_field('_', 'continue'), ';'), '_'),
+      take_from(pattern(None, as_field('_', 'break'), ';'), '_'),
+      take_from(pattern(None, as_field('_', 'expr'), ';'), '_'),
     )),
     take_just=get_field('_')
   ),
 
-  pattern('ifcond',
+  pattern('return_',
+    'return', as_field('body', optional('expr')), ';'
+  ),
+
+  pattern('while_',
+    'while', '(', field('expr'), ')', as_field('body', 'block')
+  ),
+
+  pattern('if_',
     'if', '(', field('expr'), ')', as_field('body', 'block'),
 
     as_field('elseif_nodes', undefined_seq(
@@ -130,7 +142,11 @@ PATTERNS = [
       undefined_seq(
         undefined_seq('term', sep=one_of('*', '/'), insert_seps=True, min=1),
       sep=one_of('+', '-'), insert_seps=True, min=1)
-    )
+    ),
+
+    as_field('inline_if', optional(pattern('inline_if_node',
+      '?', as_field('then_expr', 'expr'), ':', as_field('else_expr', 'expr')
+    ))),
   ),
 
   pattern('un',
@@ -286,7 +302,10 @@ class Parser(CompilerComponent):
     return Out(True, node=m.node)
   
   def process_optional_macro(self, pattern_to_match):
-    return Out(True, node=self.match_pattern(pattern_to_match.to_match).node)
+    if (m := self.match_pattern(pattern_to_match.to_match)).unwrap():
+      return m
+    
+    return Out(True, node=None)
 
   def process_as_field_macro(self, pattern_to_match):
     r = self.match_pattern(pattern_to_match.to_match)

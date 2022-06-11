@@ -24,6 +24,8 @@ PUNCTUATION = [
   '#',
   ',',
   '.',
+  '?',
+  ':'
 ]
 
 DOUBLE_PUNCTUATION = [
@@ -46,6 +48,8 @@ KEYWORDS = [
   'long',
   'float',
   'double',
+  'continue',
+  'break',
   'return',
 ]
 

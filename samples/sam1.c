@@ -1,11 +1,3 @@
-MyType x(long y, long z) {
-    if (1) {
-        int k;
-    } else if (10) {
-
-    } else if (20) {
-        
-    } else {
-        int y;
-    }
+int max(int a, int b) {
+    return 10 ? a : b;
 }
