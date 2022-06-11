@@ -1,3 +1,1 @@
-int max(int a, int b) {
-    return 10 ? a : b;
-}
+int a = 10, b, c = 3;

@@ -71,12 +71,23 @@ class pattern(macro_dbg):
     self.take_just = take_just
 
 PATTERNS = [
+  # pattern('var',
+  #   field('type'), field('id'),
+  #   one_of(
+  #     as_field('body', match_but_get(';', lambda parser, matched: None)),
+  #     inline_pattern('=', as_field('body', 'expr'), ';')
+  #   )
+  # ),
+  
   pattern('var',
-    field('type'), field('id'),
-    one_of(
-      as_field('body', match_but_get(';', lambda parser, matched: None)),
-      inline_pattern('=', as_field('body', 'expr'), ';')
-    )
+    field('type'), as_field('ids_values',
+      undefined_seq(
+        pattern('id_value', field('id'), as_field('value',
+          optional(take_from(pattern(None, '=', field('expr')), 'expr'))
+        )),
+      sep=',')
+    ),
+    ';'
   ),
 
   pattern('fn',
